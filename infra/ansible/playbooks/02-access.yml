@@ -1,0 +1,119 @@
+---
+# Phase 1 — automation identities.
+#
+# Two separate things, both needed by the bpg/proxmox provider:
+#   1. a system user with passwordless sudo on EVERY node, for the SSH channel
+#      the provider uses to upload ISOs, snippets and cloud-init data
+#   2. a PVE API user + token with a least-privilege role
+#
+# Bootstrapped over root SSH with `pveum`, because the API modules would need
+# the very token this playbook creates.
+#
+#   ansible-playbook playbooks/02-access.yml
+
+- name: System user for the provider's SSH channel
+  hosts: pve
+  gather_facts: false
+  tasks:
+    # PVE does not ship sudo; the provider's SSH channel needs it.
+    - name: Ensure sudo is installed
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+
+    - name: Create the automation system user
+      ansible.builtin.user:
+        name: "{{ pve_automation_user }}"
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Authorise the automation SSH key
+      ansible.posix.authorized_key:
+        user: "{{ pve_automation_user }}"
+        key: "{{ lookup('file', pve_automation_key ~ '.pub') }}"
+        state: present
+
+    # The provider runs privileged commands over this channel, so sudo must not
+    # prompt. Scoped to this user only.
+    - name: Grant passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ pve_automation_user }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+        content: "{{ pve_automation_user }} ALL=(ALL) NOPASSWD: ALL\n"
+
+- name: PVE API user, role and token
+  hosts: pve_primary
+  gather_facts: false
+  tasks:
+    - name: Create the least-privilege automation role
+      ansible.builtin.shell: |
+        set -e
+        PRIVS="Datastore.Allocate,Datastore.AllocateSpace,Datastore.AllocateTemplate,Datastore.Audit,\
+        Pool.Allocate,Pool.Audit,SDN.Audit,SDN.Use,Sys.Audit,Sys.Console,Sys.Modify,User.Modify,\
+        VM.Allocate,VM.Audit,VM.Backup,VM.Clone,VM.Config.CDROM,VM.Config.CPU,VM.Config.Cloudinit,\
+        VM.Config.Disk,VM.Config.HWType,VM.Config.Memory,VM.Config.Network,VM.Config.Options,\
+        VM.Console,VM.Migrate,VM.PowerMgmt,VM.Snapshot,VM.Snapshot.Rollback"
+        PRIVS=$(echo "$PRIVS" | tr -d ' \\\n')
+        if pveum role list --output-format json | grep -q '"roleid":"{{ pve_api_role }}"'; then
+          pveum role modify {{ pve_api_role }} --privs "$PRIVS"
+          echo modified
+        else
+          pveum role add {{ pve_api_role }} --privs "$PRIVS"
+          echo created
+        fi
+      args:
+        executable: /bin/bash
+      register: _role
+      changed_when: _role.stdout is search('created')
+
+    - name: Create the API user
+      ansible.builtin.shell: |
+        pveum user list --output-format json | grep -q '"userid":"{{ pve_api_user }}"' \
+          || { pveum user add {{ pve_api_user }} --comment "OpenTofu / Ansible automation"; echo created; }
+      args:
+        executable: /bin/bash
+      register: _apiuser
+      changed_when: _apiuser.stdout is search('created')
+
+    - name: Grant the role at the datacenter root
+      ansible.builtin.command: >-
+        pveum acl modify / --users {{ pve_api_user }} --roles {{ pve_api_role }}
+      register: _acl
+      changed_when: true
+
+    - name: Check whether the API token already exists
+      ansible.builtin.command: pveum user token list {{ pve_api_user }} --output-format json
+      register: _tokens
+      changed_when: false
+
+    - name: Create the API token
+      ansible.builtin.command: >-
+        pveum user token add {{ pve_api_user }} {{ pve_api_token_name }}
+        --privsep 0 --output-format json
+      register: _newtoken
+      no_log: true
+      when: pve_api_token_name not in (_tokens.stdout | from_json | map(attribute='tokenid') | list)
+
+    - name: Stage the token for encryption
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../../secrets/.proxmox-token.plain.yaml"
+        mode: "0600"
+        content: |
+          proxmox:
+            endpoint: "https://{{ hostvars[pve_primary].ansible_host }}:8006/"
+            api_token: "{{ (_newtoken.stdout | from_json)['full-tokenid'] }}={{ (_newtoken.stdout | from_json).value }}"
+            ssh_username: "{{ pve_automation_user }}"
+      delegate_to: localhost
+      no_log: true
+      when: _newtoken is not skipped
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Token created and staged for encryption.'
+             if _newtoken is not skipped
+             else 'Token already exists - secrets/ left untouched.' }}

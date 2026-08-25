@@ -11,10 +11,13 @@ infra/ansible/collections/
 .terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
 
 # secrets - never commit decrypted material
 *.decrypted
 *.key
 !*.pub
 age.key
+
+# OpenTofu: lock file IS committed (pins provider versions); state is not
+!.terraform.lock.hcl
+crash.log

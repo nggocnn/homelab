@@ -15,7 +15,7 @@ pve_nic: nic0
 
 # --- cluster ----------------------------------------------------------------
 pve_cluster_name: pve
-pve_primary: pve-01
+pve_primary: "{{ groups['pve_primary'][0] }}"
 
 # --- behaviour toggles ------------------------------------------------------
 pve_repo_no_subscription: true   # enterprise repo off, no-subscription on
@@ -25,3 +25,10 @@ pve_nic_offload_fix: true        # I219-LM e1000e hang workaround
 pve_cpu_governor: powersave      # intel_pstate offers: performance | powersave
 pve_unattended_upgrades: true
 pve_do_dist_upgrade: false       # set true (or -e) to run a full upgrade
+
+# --- automation identity ----------------------------------------------------
+pve_automation_user: automation           # system user for SSH (OpenTofu file uploads)
+pve_automation_key: ~/.ssh/automation.nggocnn.io
+pve_api_user: automation@pve              # PVE API user
+pve_api_token_name: tofu
+pve_api_role: Automation

@@ -143,6 +143,24 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
 
 ---
 
+## Working with this repo
+
+    infra/ansible/                    ansible-core 2.21 + community.proxmox
+      playbooks/00-host.yml           host config - idempotent, safe to re-run
+      playbooks/01-cluster.yml        cluster formation - guarded, no-op once formed
+      playbooks/02-access.yml         automation SSH user + PVE API token
+    infra/opentofu/
+      ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
+    secrets/tofu.sops.yaml            age-encrypted; see Secrets below
+
+Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
+`tofu`, `sops` and `age`. Nothing needed root on the workstation.
+
+    .venv/bin/ansible-playbook playbooks/00-host.yml --check --diff
+    cd infra/opentofu && ./tofu.sh plan
+
+---
+
 ## Task list
 
 ### Phase 0 — Node bootstrap
@@ -190,17 +208,17 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 
 ### Phase 1 — Automation groundwork
 
-- [ ] Scaffold the repo (`infra/`, `config/`, `apps/`, `kubernetes-lab/`, `secrets/`, `docs/`).
-- [ ] Add `.gitignore` and set up **SOPS + age**. See [Secrets](#secrets) for where the
+- [x] Scaffold the repo (`infra/`, `config/`, `apps/`, `kubernetes-lab/`, `secrets/`, `docs/`).
+- [x] Add `.gitignore` and set up **SOPS + age**. See [Secrets](#secrets) for where the
       private key lives.
-- [ ] Create a **least-privilege `automation@pve`** API token; store it via SOPS.
-- [ ] Create a dedicated **automation SSH user with passwordless `sudo` on all three
+- [x] Create a **least-privilege `automation@pve`** API token; store it via SOPS.
+- [x] Create a dedicated **automation SSH user with passwordless `sudo` on all three
       nodes**. The `bpg/proxmox` provider needs SSH for file uploads (ISOs, snippets,
       cloud-init user-data), and some operations reject API-token auth outright
       regardless of role. A token alone is not sufficient.
-- [ ] Configure OpenTofu with the `bpg/proxmox` provider and **native state encryption**
+- [x] Configure OpenTofu with the `bpg/proxmox` provider and **native state encryption**
       (OpenTofu 1.7+ — no remote backend required just to keep state safe).
-- [ ] Build the Ansible **`pve-host`** role (idempotent): keep repos/nag fixed after
+- [x] Build the Ansible **`pve-host`** role (idempotent): keep repos/nag fixed after
       upgrades, template **`/etc/hosts` with each node's name and FQDN**, set the CPU
       governor for power saving, apply the **I219-LM NIC fix**, configure chrony,
       distribute SSH keys, `zpool set autotrim=on`, and enable unattended security
@@ -208,7 +226,7 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 
 ### Phase 2 — Cluster bootstrap (OpenTofu)
 
-- [ ] Create the resource pools.
+- [x] Create the resource pools.
 - [ ] Enable the datacenter **firewall** safely (allow established + management, then
       default-drop) with per-pool security groups. **Rollback path first**: Tailscale on
       the hosts, plus `pve-firewall stop` from the physical console.

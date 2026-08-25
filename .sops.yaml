@@ -1,0 +1,8 @@
+# SOPS routing. The recipient below is the PUBLIC half of the age key named
+# pve.nggocnn.io - safe to commit. The private half lives in ~/.config/sops/age/keys.txt
+# and is NOT in this repo; see the Secrets section of README.md for where it is kept.
+creation_rules:
+  - path_regex: secrets/.*\.(ya?ml|json|env)$
+    age: age1s5ma28a5nr85v73juucgh4zephf3ufzlz54aupdckrleu7jx79usgpyhye
+  - path_regex: .*\.sops\.(ya?ml|json|env)$
+    age: age1s5ma28a5nr85v73juucgh4zephf3ufzlz54aupdckrleu7jx79usgpyhye
