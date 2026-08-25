@@ -1,0 +1,20 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# ansible
+*.retry
+infra/ansible/collections/
+
+# opentofu / terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# secrets - never commit decrypted material
+*.decrypted
+*.key
+!*.pub
+age.key

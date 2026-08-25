@@ -1,0 +1,64 @@
+---
+- name: Ensure ethtool is installed
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+
+- name: Confirm the configured NIC exists
+  ansible.builtin.assert:
+    that: pve_nic in ansible_interfaces
+    fail_msg: >-
+      Interface '{{ pve_nic }}' not found on {{ inventory_hostname }}.
+      Found: {{ ansible_interfaces | join(', ') }}
+    quiet: true
+
+- name: Install the NIC offload workaround unit
+  ansible.builtin.template:
+    src: pve-nic-offload.service.j2
+    dest: /etc/systemd/system/pve-nic-offload.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd
+
+- name: Flush handlers so the unit file is loaded before we enable it
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the NIC offload workaround
+  ansible.builtin.systemd_service:
+    name: pve-nic-offload.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Read back the offload state
+  ansible.builtin.command:
+    cmd: ethtool -k {{ pve_nic }}
+  changed_when: false
+  register: _offload
+  when: not ansible_check_mode
+
+- name: Assert TSO/GSO/GRO are actually off
+  ansible.builtin.assert:
+    that:
+      - "'tcp-segmentation-offload: off' in _offload.stdout"
+      - "'generic-segmentation-offload: off' in _offload.stdout"
+      - "'generic-receive-offload: off' in _offload.stdout"
+    fail_msg: "Offload still enabled on {{ pve_nic }} — the I219-LM workaround did not take"
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Read back the EEE state
+  ansible.builtin.command:
+    cmd: ethtool --show-eee {{ pve_nic }}
+  changed_when: false
+  register: _eee
+  when: not ansible_check_mode
+
+- name: Assert EEE is disabled
+  ansible.builtin.assert:
+    that: "'EEE status: disabled' in _eee.stdout"
+    fail_msg: "EEE still enabled on {{ pve_nic }} — link flap risk remains"
+    quiet: true
+  when: not ansible_check_mode

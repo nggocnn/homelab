@@ -1,0 +1,13 @@
+---
+# Phase 0 — bring every node to a known, repeatable state.
+# Idempotent: safe to re-run at any time, including after PVE upgrades.
+#
+#   ansible-playbook playbooks/00-host.yml
+#   ansible-playbook playbooks/00-host.yml --check --diff
+#   ansible-playbook playbooks/00-host.yml -e pve_do_dist_upgrade=true
+- name: Configure Proxmox VE hosts
+  hosts: pve
+  gather_facts: true
+  serial: 1          # one node at a time; never disrupt all three together
+  roles:
+    - pve_host

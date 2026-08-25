@@ -153,17 +153,17 @@ installer (Phase 0b) is a later experiment that replaces the manual step for the
 *next* rebuild.
 
 - [x] **Install Proxmox VE** on each node (done manually).
-- [ ] **Post-install tune-up** via the community *Proxmox VE Post Install* helper
+- [x] **Post-install tune-up** via the community *Proxmox VE Post Install* helper
       (<https://community-scripts.org/>): disable the enterprise APT repo, enable
       no-subscription, remove the subscription-nag message, and run a full package
       update — on all three nodes.
-- [ ] **Apply the I219-LM e1000e fix on every node** *(before forming the cluster)*.
+- [x] **Apply the I219-LM e1000e fix on every node** *(before forming the cluster)*.
       A `systemd` oneshot disabling TSO/GSO/GRO on the onboard NIC. A NIC hang while
       corosync is running does not look like a dropped download — it looks like node
       loss. Also captured in the Ansible `pve-host` role so it survives upgrades.
-- [ ] **Verify time sync** (chrony) on all three nodes. Corosync, certificates and
+- [x] **Verify time sync** (chrony) on all three nodes. Corosync, certificates and
       TOTP all depend on agreed time.
-- [ ] **Seed SSH access**: add your public key to each node by hand and verify
+- [x] **Seed SSH access**: add your public key to each node by hand and verify
       key-only login works. This is the last manual credential step.
 - [ ] **Form the cluster**: create it on `pve-01`, then join `pve-02` and `pve-03`
       (`pve`). Node names are immutable after join — confirm `pve-01/02/03` is final.

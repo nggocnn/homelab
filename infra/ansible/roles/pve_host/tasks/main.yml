@@ -1,0 +1,40 @@
+---
+- name: Assert this is a Proxmox VE node
+  ansible.builtin.stat:
+    path: /usr/bin/pveversion
+  register: _pveversion
+  failed_when: not _pveversion.stat.exists
+
+- name: Gather PVE version
+  ansible.builtin.command: pveversion
+  changed_when: false
+  check_mode: false
+  register: _pve_ver
+
+- name: Show PVE version
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ _pve_ver.stdout }}"
+
+- ansible.builtin.import_tasks: repos.yml
+  tags: [repos]
+
+- ansible.builtin.import_tasks: nag.yml
+  when: pve_remove_nag | bool
+  tags: [nag]
+
+- ansible.builtin.import_tasks: network.yml
+  when: pve_nic_offload_fix | bool
+  tags: [network, nic]
+
+- ansible.builtin.import_tasks: hostsfile.yml
+  tags: [hosts]
+
+- ansible.builtin.import_tasks: time.yml
+  tags: [time]
+
+- ansible.builtin.import_tasks: power.yml
+  tags: [power]
+
+- ansible.builtin.import_tasks: updates.yml
+  when: pve_unattended_upgrades | bool
+  tags: [updates]

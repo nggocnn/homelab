@@ -1,0 +1,25 @@
+---
+# Corosync, TLS certificates and TOTP all depend on the nodes agreeing on time.
+- name: Ensure chrony is installed
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+
+- name: Ensure chrony is enabled and running
+  ansible.builtin.service:
+    name: chrony
+    enabled: true
+    state: started
+
+- name: Read time sync status
+  ansible.builtin.command:
+    cmd: timedatectl show -p NTPSynchronized --value
+  changed_when: false
+  check_mode: false
+  register: _ntp_sync
+
+- name: Assert the clock is synchronised
+  ansible.builtin.assert:
+    that: _ntp_sync.stdout | trim == 'yes'
+    fail_msg: "{{ inventory_hostname }} clock is NOT synchronised — fix before forming the cluster"
+    quiet: true
