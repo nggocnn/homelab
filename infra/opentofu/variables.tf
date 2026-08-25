@@ -13,3 +13,15 @@ variable "ssh_private_key_path" {
   type        = string
   default     = "~/.ssh/automation.nggocnn.io"
 }
+
+variable "gateway" {
+  description = "Default gateway for the flat /24."
+  type        = string
+  default     = "10.10.10.1"
+}
+
+variable "guest_ssh_public_key_path" {
+  description = "Public key authorised for root inside guests."
+  type        = string
+  default     = "~/.ssh/pve.nggocnn.io.pub"
+}

@@ -1,0 +1,37 @@
+---
+# Guest-side host configuration that the API token is not permitted to do.
+#
+# Device passthrough is root@pam-only in PVE, so OpenTofu (which authenticates
+# with the least-privilege automation token) cannot attach /dev/net/tun. It is
+# done here over the root SSH channel instead.
+#
+#   ansible-playbook playbooks/03-guests.yml
+
+- name: Attach /dev/net/tun to the Tailscale container
+  hosts: pve_primary
+  gather_facts: false
+  tasks:
+    - name: Check the container's current devices
+      ansible.builtin.command: pct config {{ pve_tailscale_ctid }}
+      register: _ctconf
+      changed_when: false
+      check_mode: false
+
+    - name: Attach the TUN device
+      ansible.builtin.command: >-
+        pct set {{ pve_tailscale_ctid }} --dev0 /dev/net/tun
+      when: "'/dev/net/tun' not in _ctconf.stdout"
+      register: _attached
+
+    - name: Restart the container to pick up the device
+      ansible.builtin.command: pct reboot {{ pve_tailscale_ctid }}
+      when: _attached is changed
+
+    - name: Verify the device is present inside the container
+      ansible.builtin.command: pct exec {{ pve_tailscale_ctid }} -- test -c /dev/net/tun
+      register: _tun
+      until: _tun.rc == 0
+      retries: 10
+      delay: 3
+      changed_when: false
+      check_mode: false
