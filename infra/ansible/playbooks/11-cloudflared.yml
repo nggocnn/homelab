@@ -1,0 +1,12 @@
+---
+# Install cloudflared in the tunnel replica containers.
+#
+# Installs the binary and apt repo only -- the tunnel itself needs the token
+# from the Cloudflare dashboard and is configured separately.
+#
+#   ansible-playbook playbooks/11-cloudflared.yml
+- name: Install cloudflared
+  hosts: cloudflared
+  gather_facts: true
+  roles:
+    - cloudflared
