@@ -1,0 +1,32 @@
+---
+- name: Install the CPU governor unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pve-cpu-governor.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      [Unit]
+      Description=Set CPU scaling governor to {{ pve_cpu_governor }}
+      After=multi-user.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo {{ pve_cpu_governor }} > "$g"; done'
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload systemd
+
+- name: Flush handlers before enabling the governor unit
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the CPU governor unit
+  ansible.builtin.systemd_service:
+    name: pve-cpu-governor.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode

@@ -1,0 +1,11 @@
+---
+pve_domain: local
+pve_nic: nic0
+pve_repo_no_subscription: true
+pve_disable_ceph_repo: true
+pve_remove_nag: true
+pve_nic_offload_fix: true
+pve_cpu_governor: powersave
+pve_unattended_upgrades: true
+pve_do_dist_upgrade: false
+pve_managed_note: "Managed by Ansible (homelab/infra/ansible) - do not edit by hand"

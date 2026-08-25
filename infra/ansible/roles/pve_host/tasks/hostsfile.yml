@@ -1,0 +1,23 @@
+---
+- name: Template /etc/hosts with every node's name and FQDN
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Verify the node resolves its own FQDN
+  ansible.builtin.command:
+    cmd: hostname -f
+  changed_when: false
+  register: _fqdn
+  when: not ansible_check_mode
+
+- name: Assert the FQDN is correct
+  ansible.builtin.assert:
+    that: _fqdn.stdout == inventory_hostname ~ '.' ~ pve_domain
+    fail_msg: "hostname -f returned '{{ _fqdn.stdout | default('') }}', expected '{{ inventory_hostname }}.{{ pve_domain }}'"
+    quiet: true
+  when: not ansible_check_mode

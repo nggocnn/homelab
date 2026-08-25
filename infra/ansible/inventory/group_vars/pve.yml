@@ -1,0 +1,26 @@
+---
+# --- connection -------------------------------------------------------------
+ansible_user: root
+ansible_ssh_private_key_file: ~/.ssh/pve.nggocnn.io
+ansible_python_interpreter: /usr/bin/python3
+
+# --- site -------------------------------------------------------------------
+pve_domain: nggocnn.io
+pve_subnet_cidr: 10.10.10.0/24
+pve_gateway: 10.10.10.1
+
+# --- hardware ---------------------------------------------------------------
+# PVE 9 stable interface naming: the onboard I219-LM is nic0, NOT eno1.
+pve_nic: nic0
+
+# --- cluster ----------------------------------------------------------------
+pve_cluster_name: homelab
+
+# --- behaviour toggles ------------------------------------------------------
+pve_repo_no_subscription: true   # enterprise repo off, no-subscription on
+pve_disable_ceph_repo: true      # not using Ceph
+pve_remove_nag: true
+pve_nic_offload_fix: true        # I219-LM e1000e hang workaround
+pve_cpu_governor: powersave      # intel_pstate offers: performance | powersave
+pve_unattended_upgrades: true
+pve_do_dist_upgrade: false       # set true (or -e) to run a full upgrade

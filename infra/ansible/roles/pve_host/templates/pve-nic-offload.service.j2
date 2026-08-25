@@ -1,0 +1,18 @@
+# {{ pve_managed_note }}
+# Intel I219-LM / e1000e workarounds:
+#   offload  - "Detected Hardware Unit Hang" regression, still present on PVE 9 kernels
+#   eee      - Energy Efficient Ethernet causes link flap on these Intel parts
+# A NIC hang or link flap while corosync is running looks like node loss.
+[Unit]
+Description=Disable e1000e offload and EEE on {{ pve_nic }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool -K {{ pve_nic }} tso off gso off gro off
+ExecStart=/usr/sbin/ethtool --set-eee {{ pve_nic }} eee off
+
+[Install]
+WantedBy=multi-user.target
