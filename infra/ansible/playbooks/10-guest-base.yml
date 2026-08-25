@@ -1,0 +1,9 @@
+---
+# Baseline every guest container: update, upgrade, install curl.
+#
+#   ansible-playbook playbooks/10-guest-base.yml
+- name: Baseline guest containers
+  hosts: guests
+  gather_facts: true
+  roles:
+    - guest_base

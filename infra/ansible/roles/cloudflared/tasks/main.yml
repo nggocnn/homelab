@@ -1,0 +1,44 @@
+---
+- name: Ensure the keyrings directory exists
+  ansible.builtin.file:
+    path: /usr/share/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the Cloudflare package signing key
+  ansible.builtin.get_url:
+    url: https://pkg.cloudflare.com/cloudflare-public-v2.gpg
+    dest: /usr/share/keyrings/cloudflare-public-v2.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the cloudflared apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/cloudflared.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main
+
+# update_cache here rather than gated on the repo file changing: if a previous
+# run added the file but died before refreshing, the package stays invisible
+# and the install fails on every subsequent run.
+- name: Install cloudflared
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+    update_cache: true
+
+- name: Record the installed version
+  ansible.builtin.command: cloudflared --version
+  changed_when: false
+  check_mode: false
+  register: _cfver
+
+- name: Show version
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ _cfver.stdout }}"

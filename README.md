@@ -150,6 +150,8 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/01-cluster.yml        cluster formation - guarded, no-op once formed
       playbooks/02-access.yml         automation SSH user + PVE API token
       playbooks/03-guests.yml         guest config the API token may not do
+      playbooks/10-guest-base.yml     update/upgrade + curl in every container
+      playbooks/11-cloudflared.yml    cloudflared from Cloudflare's apt repo
     infra/opentofu/
       pools.tf  templates.tf  containers.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
