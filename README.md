@@ -29,8 +29,7 @@ Three small-form-factor Lenovo ThinkStation P330 Tiny nodes on a flat `10.10.10.
 **pve-03 (`.13`)** — Intel Core **i7-8700**, 6 cores / 12 threads @ 3.2 GHz, **24 GB** RAM, a
 **256 GB NVMe** SSD.
 
-Total pooled capacity: ~20 CPU cores / 32 threads, ~72 GB RAM, ~1 TB NVMe. No shared storage,
-so guests are pinned per node and recovery is backup-based rather than live-migration.
+Total pooled capacity: ~20 CPU cores / 32 threads, ~72 GB RAM, ~1 TB NVMe.
 
 ---
 
@@ -47,14 +46,14 @@ so guests are pinned per node and recovery is backup-based rather than live-migr
 | Remote access | Cloudflare Tunnel (cloudflared) + Tailscale |
 | DNS + ad-block (HA) | Pi-hole + AdGuard behind keepalived VIP |
 | Reverse proxy / internal routing | Traefik (or Caddy) |
-| Identity / SSO | Authentik (OIDC for the Proxmox UI + apps) |
-| Monitoring & logs | Prometheus, Grafana, Loki, Alertmanager, InfluxDB, Uptime Kuma |
-| Dashboard | Homepage |
-| CI/CD & GitOps | Forgejo + Actions, Renovate, Atlantis |
-| Notifications | ntfy |
+| Identity / SSO | Keycloak (OIDC for the Proxmox UI + apps) |
+| Monitoring & logs | Prometheus, Grafana, Loki, Alertmanager, InfluxDB, Uptime Kuma, Pulse |
+| Host sensors (temp/fan/power) | lm-sensors + node_exporter `hwmon` (temps/fans) & `rapl` (power) collectors |
+| Dashboard | Homepage, Homarr |
+| Source, registry & CI/CD | GitLab CE — Git SCM + Container Registry + CI/CD runners, mirrored with a GitHub repo; Renovate for update PRs |
+| Notifications | ntfy + Telegram bot |
 | Backup | Proxmox Backup Server + restic/rclone to object storage |
-| Kubernetes lab | Talos Linux + Cilium (automated); hand-built cluster (manual) |
-| Optional network appliance | OPNsense |
+| Kubernetes lab | Hand-built cluster, fully manual (Cilium CNI); Ansible automation planned later |
 
 ---
 
@@ -69,9 +68,9 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
 |-------|------|-----------------|
 | `.100–.119` | `network` | Cloudflare tunnels `101/102/103`, Pi-hole `104`, AdGuard `105`, Tailscale `106` |
 | `.120–.139` | `access` | bastion `120`, remote desktop `121`, browser workspace `122` |
-| `.140–.149` | `infrastructure` | svc-core (proxy/SSO/dashboard/ntfy) `141`, monitoring `142`, git+CI `143`, backup `148` |
+| `.140–.149` | `infrastructure` | svc-core (proxy/Keycloak/dashboard/ntfy) `141`, monitoring `142`, GitLab `143`, backup `148` |
 | `.150–.169` | `container-platform` | Docker host `151`, registry `152`, extra hosts `153+` |
-| `.170–.199` | `kubernetes-lab` | Talos control planes `171–173`, Talos workers `174–176`, hand-built lab `181–186` |
+| `.170–.199` | `kubernetes-lab` | hand-built control planes `171–173`, workers `174–176` (manual build) |
 | `.200–.249` | spare | ad-hoc experiments / playground |
 
 ---
@@ -117,9 +116,11 @@ by hand once per node. Everything after this is automated.
 ### Phase 3 — Core services
 
 - [ ] Docker host + **Traefik** reverse proxy with wildcard cert (internal split-horizon routing).
-- [ ] **Authentik** for SSO, then wire it as the Proxmox **OIDC** login (keep root break-glass).
-- [ ] **Monitoring stack**: Prometheus, Grafana, Loki, Alertmanager; alerts → **ntfy**; Uptime Kuma.
-- [ ] **Homepage** dashboard with Proxmox/Docker/service widgets.
+- [ ] **Keycloak** for SSO, then wire it as the Proxmox **OIDC** login (keep root break-glass).
+- [ ] **Monitoring stack**: Prometheus, Grafana, Loki, Alertmanager; Uptime Kuma; alerts → **ntfy + Telegram bot**.
+- [ ] **Host sensors**: enable node_exporter `hwmon` + `rapl` collectors (temperature, fan speed where exposed, power draw); run `sensors-detect` per node.
+- [ ] **Pulse** as an additional Proxmox-native real-time monitoring view.
+- [ ] **Homepage** dashboard with Proxmox/Docker/service widgets; try **Homarr** as an additional option.
 - [ ] Quality-of-life apps: Vaultwarden, browser workspace, remote desktop.
 
 ### Phase 4 — DNS & ingress
@@ -130,21 +131,20 @@ by hand once per node. Everything after this is automated.
 
 ### Phase 5 — CI/CD & GitOps
 
-- [ ] **Forgejo** (self-hosted git) + Actions runner; migrate this repo to it.
-- [ ] **Renovate** for dependency update PRs.
-- [ ] **Atlantis** for OpenTofu plan/apply on pull requests.
+- [ ] **GitLab CE** on its own VM: Git SCM + **Container Registry** + CI/CD runners; migrate this repo to it.
+- [ ] **Mirror with GitHub**: set up pull/push mirroring between the self-hosted GitLab repo and a GitHub repo.
+- [ ] **CI/CD pipelines** in GitLab: build/publish images to the registry, and run OpenTofu plan/apply on merge requests.
+- [ ] **Renovate** for dependency update PRs (GitLab).
 
 ### Phase 6 — Kubernetes lab (independent module)
 
-- [ ] **Talos** path (automated): OpenTofu boots VMs from the Talos image, machineconfig in git,
-      `talosctl bootstrap`, **Cilium** CNI — fully reproducible teardown/rebuild.
-- [ ] **Hand-built** path (manual): a runbook that stands up etcd, control plane, kubelets, PKI,
-      and CNI by hand on blank VMs, with verification scripts. Learning-focused.
+- [ ] **Hand-built cluster, fully manual**: a runbook that stands up etcd, the control plane,
+      kubelets, PKI, and **Cilium** CNI by hand on blank VMs, with verification scripts. Learning-focused.
+- [ ] *(Later)* Automate this same build with **Ansible** so it can be stood up/torn down repeatably.
 
 ### Phase 7 — Optional
 
-- [ ] SDN VLAN segmentation + **OPNsense** appliance (inter-VLAN firewall + IDS/IPS).
-- [ ] Dedicated Proxmox Backup Server with cloud sync.
+- [ ] Dedicated Proxmox Backup Server
 
 ---
 
@@ -153,4 +153,5 @@ by hand once per node. Everything after this is automated.
 - The only manual OS step is installing Proxmox; interactive items (post-install helper,
   Cloudflare tunnel, Tailscale, first SSH key) are done once by hand, then kept in git/automation.
 - No shared storage → guests are pinned per node; recovery is via backups, not live migration.
-- VMID = IP last octet on a flat `/24`; VLAN segmentation (Phase 7) would require evolving the rule.
+- VMID = IP last octet on a flat `/24`.
+- GitLab CE is heavier than a lightweight forge (budget ~4 GB RAM / 2–4 vCPU); give it its own VM.
