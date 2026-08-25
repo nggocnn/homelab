@@ -1,0 +1,95 @@
+---
+- name: Install the Tailscale package signing key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Tailscale apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian trixie main
+
+# update_cache on the install itself, so a run that dies before refreshing
+# cannot leave the package permanently invisible.
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+# A subnet router forwards traffic for other hosts, so the kernel must be
+# willing to route. Without this, routes advertise but nothing passes.
+- name: Enable IP forwarding
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-tailscale.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+  register: _sysctl
+
+# Only our own file: `sysctl --system` also replays Debian's defaults, which
+# include kernel-namespace keys an unprivileged container may not set, and it
+# exits non-zero on those even though our settings applied fine.
+- name: Apply sysctl settings
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/99-tailscale.conf
+  when: _sysctl is changed
+  changed_when: true
+
+- name: Confirm /dev/net/tun is present
+  ansible.builtin.stat:
+    path: /dev/net/tun
+  register: _tun
+
+- name: Fail early if the TUN device is missing
+  ansible.builtin.assert:
+    that: _tun.stat.exists
+    fail_msg: >-
+      /dev/net/tun missing. Run playbooks/03-guests.yml on the host to attach it
+      (device passthrough is root@pam-only, so OpenTofu cannot).
+    quiet: true
+
+- name: Ensure tailscaled is enabled and running
+  ansible.builtin.service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Check current Tailscale state
+  ansible.builtin.command: tailscale status --json
+  register: _tsstatus
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Bring Tailscale up as a subnet router
+  ansible.builtin.command: >-
+    tailscale up
+    --authkey {{ tailscale_auth_key }}
+    --advertise-routes {{ tailscale_advertise_routes }}
+    --accept-dns=false
+    --hostname {{ inventory_hostname }}
+  when:
+    - tailscale_auth_key | default('') | length > 0
+    - (_tsstatus.stdout | from_json).BackendState | default('') != 'Running'
+  no_log: true
+
+- name: Report Tailscale state
+  ansible.builtin.command: tailscale status
+  register: _tsfinal
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Show state
+  ansible.builtin.debug:
+    msg: "{{ _tsfinal.stdout_lines | default(['(not logged in)']) }}"

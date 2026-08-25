@@ -152,6 +152,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/03-guests.yml         guest config the API token may not do
       playbooks/10-guest-base.yml     update/upgrade + curl in every container
       playbooks/11-cloudflared.yml    cloudflared from Cloudflare's apt repo
+      playbooks/12-tailscale.yml      tailscale subnet router (needs auth key)
     infra/opentofu/
       pools.tf  templates.tf  containers.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption

@@ -1,0 +1,4 @@
+---
+# Supplied at run time; empty means "install only, do not log in".
+tailscale_auth_key: ""
+tailscale_advertise_routes: "10.10.10.0/24"

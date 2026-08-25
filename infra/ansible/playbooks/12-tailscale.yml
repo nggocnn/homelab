@@ -1,0 +1,14 @@
+---
+# Install Tailscale in the subnet-router container.
+#
+# Without an auth key this installs and enables tailscaled but does not log in.
+# To log in and advertise the LAN, supply a key:
+#
+#   ansible-playbook playbooks/12-tailscale.yml -e tailscale_auth_key=tskey-auth-...
+#
+# Routes still need approving in the Tailscale admin console afterwards.
+- name: Install and configure Tailscale
+  hosts: tailscale
+  gather_facts: true
+  roles:
+    - tailscale
