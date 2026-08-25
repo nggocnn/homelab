@@ -32,3 +32,6 @@ pve_automation_key: ~/.ssh/automation.nggocnn.io
 pve_api_user: automation@pve              # PVE API user
 pve_api_token_name: tofu
 pve_api_role: Automation
+
+# --- guests -----------------------------------------------------------------
+pve_tailscale_ctid: 106
