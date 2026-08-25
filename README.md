@@ -36,17 +36,23 @@ Three small-form-factor Lenovo ThinkStation P330 Tiny nodes on a flat `10.10.10.
 
 Total pooled capacity: ~20 CPU cores / 32 threads, ~72 GB RAM, ~1 TB NVMe.
 
+**As built:** PVE **9.2.2**, kernel **7.0.2-6-pve**, all three on ext4 + LVM-thin.
+`pve-03` additionally has a wireless interface (`wlo1`, down) — not used, and not
+suitable for corosync.
+
 ### Known hardware constraints
 
 - **Single NIC per node.** The P330 Tiny has one onboard Intel I219-LM. Corosync shares
-  that link with VM traffic, replication, and backups. See
+  that link with VM traffic, backups, and migrations. See
   [Corosync and the single-NIC ceiling](#corosync-and-the-single-nic-ceiling).
 - **I219-LM e1000e hang.** Still present on the 6.17.x / 7.0 kernels shipped with
   PVE 9.x. Requires an offload-disable workaround on every node — applied at
   bootstrap, before the cluster is formed.
-- **No UPS.** Accepted risk. ZFS tolerates unclean shutdown far better than ext4,
-  which is part of why the storage choice below matters. A consumer UPS is the
-  cheapest future reliability upgrade available.
+- **No UPS.** Accepted risk, and a real one: the nodes run **ext4**, which is less
+  forgiving of unclean shutdown than a copy-on-write filesystem. A consumer UPS is
+  the cheapest reliability upgrade available and is worth prioritising.
+- **NIC is named `nic0`**, not `eno1` — PVE 9 uses the new stable naming scheme.
+  `vmbr0` bridges it. Scripts and playbooks must not assume `eno1`.
 - **No NAS.** Backups land on local PBS plus a free-tier object store; see
   [Phase 2](#phase-2--cluster-bootstrap-opentofu).
 
@@ -59,18 +65,17 @@ The plan must fit inside real numbers, so they are stated up front.
 | | RAM |
 | --- | --- |
 | Raw (3 × 24 GB) | 72 GB |
-| PVE + ZFS ARC overhead (~4.5 GB × 3) | −13.5 GB |
-| **Usable for guests** | **~58 GB** |
+| PVE hypervisor overhead (~2 GB × 3) | −6 GB |
+| **Usable for guests** | **~66 GB** |
 
-ZFS ARC is capped by the installer at 10% of RAM (max 16 GiB), so ~2.4 GB per node.
+Storage, as actually installed — ext4 root plus an LVM-thin `local-lvm` pool for guest
+disks:
 
-Storage, after keeping ZFS pools at or below 80% utilisation:
-
-| Node | Raw | Usable for guests |
-| --- | --- | --- |
-| pve-01 | 512 GB | ~400 GB |
-| pve-02 | 256 GB | ~180 GB |
-| pve-03 | 256 GB | ~180 GB |
+| Node | Disk | root (ext4) | `local-lvm` thin pool | swap |
+| --- | --- | --- | --- | --- |
+| pve-01 | 477 GB | 96 GB | **349 GB** | 8 GB |
+| pve-02 | 238 GB | 69 GB | **141 GB** | 8 GB |
+| pve-03 | 238 GB | 69 GB | **141 GB** | 8 GB |
 
 This is why the Kubernetes lab starts minimal and why the forge is Forgejo rather than
 GitLab CE — see [Decisions and rationale](#decisions-and-rationale).
@@ -96,7 +101,7 @@ LXC wherever it works. Verified positions:
 | ------ | ------ |
 | Hypervisor | Proxmox VE 9.x |
 | Unattended OS install | `proxmox-auto-install-assistant` answer files + first-boot hook |
-| Host storage | ZFS (single-vdev pool, identical pool name on all nodes) |
+| Host storage | ext4 root + LVM-thin (`local-lvm`) for guest disks |
 | Provisioning (guests, pools, firewall, backups) | OpenTofu + `bpg/proxmox` provider |
 | Host & guest configuration | Ansible |
 | Post-install helpers | Community Proxmox VE helper scripts — <https://community-scripts.org/> |
@@ -175,6 +180,7 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 
 - [ ] Write `infra/bootstrap/answer-pve-0{1,2,3}.toml` (TOML: keyboard, country, fqdn,
       timezone, hashed root password, SSH keys, static `network`, `disk-setup`).
+      Use `filesystem = "ext4"` to reproduce the current layout.
 - [ ] Add a `[first-boot]` hook script (PVE 8.3+) to carry the I219-LM fix, the
       `/etc/hosts` entry and chrony, so a fresh node is correct from its first boot.
 - [ ] `proxmox-auto-install-assistant validate-answer` in CI on every change.
@@ -209,9 +215,6 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 - [ ] Configure **ACME** wildcard certs (Let's Encrypt DNS-01 via Cloudflare) for the
       node UIs.
 - [ ] Set up **`pve-exporter`** feeding Prometheus.
-- [ ] Configure **ZFS replication** (`pvesr`) for the small critical guests only — DNS,
-      svc-core, bastion — targeting `pve-01`. Do **not** replicate the Docker host or
-      Kubernetes nodes; there is no room for them on the 256 GB nodes.
 - [ ] Configure **backups**: scheduled `vzdump` to a **PBS VM on `pve-01`**, plus
       restic/rclone of *configs and small state* to a free-tier object store (B2 / R2).
       Full VM images stay local. The local copy dies with `pve-01` — the offsite leg is
@@ -227,7 +230,7 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
       alerts → **ntfy + Telegram bot**.
 - [ ] **Host sensors**: enable node_exporter `hwmon` + `rapl` collectors (temperature,
       fan speed where exposed, power draw); run `sensors-detect` per node. Add an
-      **NVMe wearout** alert — consumer drives under ZFS deserve watching.
+      **NVMe wearout** alert, and a **`local-lvm` thin-pool usage** alert (see Storage).
 - [ ] **Pulse** as an additional Proxmox-native real-time monitoring view.
 - [ ] **Homepage** dashboard with Proxmox/Docker/service widgets.
 - [ ] Quality-of-life apps: Vaultwarden, browser workspace, remote desktop.
@@ -291,50 +294,60 @@ stack** — see [Capacity budget](#capacity-budget). Kubernetes nodes are VMs, n
 ## Corosync and the single-NIC ceiling
 
 Corosync is latency-sensitive and currently shares one 1 GbE link with VM traffic,
-replication streams, and backups. Saturating that link is how three-node clusters end
+backups, and migrations. Saturating that link is how three-node clusters end
 up fencing and rebooting themselves.
 
-**Current posture:** ZFS replication is enabled for fast manual recovery, but
-**PVE HA (automatic fencing and restart) stays off.** Recovery from a node loss is a
-deliberate manual action with an RPO of minutes, not an automatic one.
+**Current posture:** **PVE HA (automatic fencing and restart) stays off.** With
+LVM-thin there is no replication either, so recovery from a node loss means restoring
+that node's guests from backup onto a surviving node. Guests are pinned per node and
+the RPO is the backup interval.
 
 **To lift this:** add the second NIC and configure a second corosync ring. Only then is
 enabling HA fencing a reasonable thing to do.
 
 ---
 
-## Storage: ZFS on small NVMe
+## Storage: ext4 + LVM-thin
 
-All three nodes use ZFS with an **identical pool name**. Replication and migration match
-storage IDs across nodes; mismatched pool names are a painful fix later. This is
-all-or-nothing — mixing ZFS and LVM-thin across the cluster breaks replication.
+All three nodes were installed with the PVE default layout: an **ext4 root** and an
+**LVM-thin pool** (`local-lvm`) holding guest disks. This is deliberate — ZFS was
+considered and rejected; see [Decisions and rationale](#decisions-and-rationale).
 
-**256 GB is not too small.** The "ZFS needs lots of space" folklore is about RAIDZ
-geometry and large arrays. A single-vdev pool on a 256 GB NVMe is an ordinary,
-supported configuration. There is no fixed root partition to size — PVE root and guest
-storage are datasets sharing one pool, so space flows where it is needed.
+What LVM-thin gives you:
 
-Settings that matter on a small consumer NVMe:
+- **Thin provisioning.** Guest disks consume only what they actually write, so you can
+  overcommit the pool. `local-lvm` is 349 GB on pve-01 and 141 GB on the other two.
+- **Copy-on-write snapshots** on any block device, with no ARC and no RAM overhead.
+- Lower RAM cost than ZFS — the whole 24 GB per node is available to guests and the
+  hypervisor rather than reserving ~2.4 GB for cache.
 
-- **`ashift=12`** — set at pool creation and immutable afterwards. Get it right once.
-- **`compress=lz4`** — effectively free CPU, and typically returns 20–40% on
-  text-heavy datasets. Real capacity back.
-- **`autotrim=on`** — *not* a default. `zpool set autotrim=on <pool>`. Matters
-  materially for sustained write performance on consumer drives.
-- **Stay at or below 80% full.** Past that, ZFS fragments and write performance
-  degrades sharply. This is where the ~180 GB usable figure comes from.
-- **A refreservation safety net.** Create an empty `<pool>/reserved` dataset with an
-  8 GB `refreservation`. A ZFS pool that reaches 100% goes read-only and is genuinely
-  unpleasant to recover; this gives you space to delete your way out.
-- **Short snapshot retention.** Replication and `vzdump` both create snapshots, and
-  snapshots pin space against a small pool.
-- **Watch wearout.** ZFS write-amplifies on drives without power-loss protection. The
-  PVE disk view reports wearout; alert on it (Phase 3).
+What it does not give you, and the consequences:
 
-Replication targets `pve-01` (512 GB), which has the room. Replicating in the other
-direction does not fit.
+- **No replication.** `pvesr` is ZFS-only. Guest disks exist on exactly one node, so a
+  dead node means restoring its guests from backup onto a survivor. This is the single
+  biggest constraint in the whole design and it drives the backup strategy.
+- **No checksums.** Silent corruption on a consumer NVMe will not be detected by the
+  filesystem. Backups are the only safety net.
+- **Migration copies the whole disk.** There is no incremental delta to ship, so moving
+  a guest between nodes is a full transfer over the single 1 GbE link.
 
----
+Operational rules that follow:
+
+- **Watch the thin pool, not just the filesystem.** A thin pool that fills up puts every
+  guest on it into read-only or worse, and *overcommitted* pools can fill while the
+  guests still think they have space. Alert on `local-lvm` `Data%` well before 100% —
+  80% is a sensible trigger. This is the LVM-thin failure mode people get caught by.
+- **Enable discard on guest disks** (`discard=on` plus `ssd=1` in the VM/CT config) so
+  deletions inside a guest actually return space to the thin pool. Without it, thin
+  volumes only ever grow.
+- **Run `fstrim` on a schedule** inside guests, and keep `issue_discards` enabled in
+  `lvm.conf` so removed LVs release NVMe blocks.
+- **Keep snapshots short-lived.** Thin snapshots consume pool space as the origin
+  diverges, and a forgotten snapshot is a common way to fill a pool.
+- **Watch NVMe wearout.** The PVE disk view reports it; alert on it, since these are
+  consumer drives without power-loss protection and there is no UPS.
+- **Backups are the recovery mechanism**, not a second line of defence. Their schedule
+  *is* the RPO. See [Phase 2](#phase-2--cluster-bootstrap-opentofu).
 
 ## Secrets
 
@@ -364,6 +377,16 @@ cycle to babysit, and SOPS + age is the right stopping point at this scale.
 ---
 
 ## Decisions and rationale
+
+**LVM-thin over ZFS.** The nodes were installed with the PVE default (ext4 + LVM-thin)
+and are staying that way. ZFS was seriously considered, because it is the only path to
+`pvesr` replication and would have cut the RPO from the backup interval down to
+minutes. It was rejected on cost: switching would have meant reinstalling all three
+nodes, which needs physical access to each machine with a USB stick — not the
+twenty-minute job it first looked like. The accepted consequence is that **recovery is
+restore-from-backup only**, which makes the backup strategy load-bearing rather than
+merely prudent. Revisit if a second disk per node ever appears, since a ZFS pool for
+guest disks alone would enable replication without touching the root filesystem.
 
 **Forgejo over GitLab CE.** GitLab CE realistically wants 8 GB with CI running; Forgejo
 does the same three jobs actually needed here — Git, container registry, CI runners — in
@@ -403,9 +426,9 @@ separate tunnels would mean three ingress configs to keep in sync for no benefit
 
 - The nodes were installed by hand this time. Phase 0b exists so the *next* rebuild is
   unattended and lives in git.
-- **ZFS replication changes the recovery story**: RPO is minutes rather than a day, and
-  offline migration ships only the delta. Automatic HA failover remains off until a
-  second corosync ring exists.
+- **No replication.** Guests are pinned per node; recovery from node loss is a restore
+  from backup, not a restart elsewhere. The backup schedule is the RPO. Automatic HA
+  failover stays off — there is nothing for it to fail over to.
 - VMID = IP last octet on a flat `/24`, across both LXC and VMs.
 - LXC by default; VM only where verified necessary.
 - Nothing runs that is not in use.
