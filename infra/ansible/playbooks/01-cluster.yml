@@ -1,0 +1,104 @@
+---
+# Phase 0 — form the cluster.
+#
+# `pvecm add` DESTROYS the joining node's guest config, so joins are gated on
+# the node not already being clustered and having no guests. Re-running this
+# playbook against a formed cluster is a no-op.
+#
+#   ansible-playbook playbooks/01-cluster.yml
+
+- name: Form the Proxmox cluster
+  hosts: pve
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Check whether this node is already in a cluster
+      ansible.builtin.command: pvecm status
+      register: _pvecm
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Read this node's root public key
+      ansible.builtin.slurp:
+        src: /root/.ssh/id_rsa.pub
+      register: _rootkey
+
+    # --- primary -----------------------------------------------------------
+    - name: Create the cluster
+      ansible.builtin.command: pvecm create {{ pve_cluster_name }} --link0 {{ ansible_host }}
+      when:
+        - inventory_hostname == pve_primary
+        - _pvecm.rc != 0
+
+    # --- joiners -----------------------------------------------------------
+    - name: Count existing guests
+      ansible.builtin.shell: |
+        echo $(( $(qm list 2>/dev/null | tail -n +2 | wc -l) + $(pct list 2>/dev/null | tail -n +2 | wc -l) ))
+      args:
+        executable: /bin/bash
+      register: _guests
+      changed_when: false
+      check_mode: false
+      when: inventory_hostname != pve_primary
+
+    - name: Refuse to join a node that already has guests
+      ansible.builtin.assert:
+        that: _guests.stdout | int == 0
+        fail_msg: >-
+          {{ inventory_hostname }} has {{ _guests.stdout }} guest(s).
+          `pvecm add` would destroy their configuration. Remove them first.
+        quiet: true
+      when:
+        - inventory_hostname != pve_primary
+        - _pvecm.rc != 0
+
+    - name: Authorise this node's root key on the primary
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ _rootkey.content | b64decode }}"
+        state: present
+      delegate_to: "{{ pve_primary }}"
+      when:
+        - inventory_hostname != pve_primary
+        - _pvecm.rc != 0
+
+    # `pvecm add --use_ssh` shells out to ssh-copy-id, which fails on an unknown
+    # host key -- and pvecm still exits 0, so the join silently does nothing.
+    - name: Read the primary's SSH host key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: _primary_hostkey
+      delegate_to: "{{ pve_primary }}"
+      when: inventory_hostname != pve_primary
+
+    - name: Trust the primary's host key as root
+      ansible.builtin.known_hosts:
+        path: /root/.ssh/known_hosts
+        name: "{{ item }}"
+        key: "{{ item }} {{ _primary_hostkey.content | b64decode | trim | regex_replace('^(\\S+ \\S+).*$', '\\1') }}"
+        state: present
+      loop:
+        - "{{ hostvars[pve_primary].ansible_host }}"
+        - "{{ pve_primary }}"
+      when:
+        - inventory_hostname != pve_primary
+        - _pvecm.rc != 0
+
+    - name: Join the cluster
+      ansible.builtin.command: >-
+        pvecm add {{ hostvars[pve_primary].ansible_host }}
+        --link0 {{ ansible_host }} --use_ssh
+      when:
+        - inventory_hostname != pve_primary
+        - _pvecm.rc != 0
+
+    # --- verify ------------------------------------------------------------
+    - name: Wait for this node to be a cluster member
+      ansible.builtin.command: pvecm status
+      register: _member
+      until: _member.rc == 0
+      retries: 12
+      delay: 5
+      changed_when: false
+      check_mode: false
