@@ -1,0 +1,62 @@
+; {{ pve_managed_note | default('Managed by Ansible') }}
+APP_NAME = nggocnn homelab
+RUN_USER = git
+RUN_MODE = prod
+WORK_PATH = /var/lib/forgejo
+
+[server]
+PROTOCOL = http
+DOMAIN = {{ forgejo_domain }}
+ROOT_URL = {{ forgejo_root_url }}
+HTTP_ADDR = 0.0.0.0
+HTTP_PORT = {{ forgejo_http_port }}
+; Forgejo's own SSH server rather than the system sshd: keeps git access
+; independent of host SSH config and needs no privileged port.
+START_SSH_SERVER = true
+SSH_PORT = 2222
+SSH_LISTEN_PORT = 2222
+SSH_DOMAIN = {{ forgejo_domain }}
+APP_DATA_PATH = /var/lib/forgejo/data
+LFS_START_SERVER = true
+LFS_JWT_SECRET = {{ forgejo_secrets.LFS_JWT_SECRET }}
+OFFLINE_MODE = true
+
+[database]
+DB_TYPE = {{ forgejo_db_type }}
+PATH = /var/lib/forgejo/data/forgejo.db
+
+[repository]
+ROOT = /var/lib/forgejo/data/forgejo-repositories
+DEFAULT_BRANCH = main
+
+[security]
+INSTALL_LOCK = true
+SECRET_KEY = {{ forgejo_secrets.SECRET_KEY }}
+INTERNAL_TOKEN = {{ forgejo_secrets.INTERNAL_TOKEN }}
+
+[oauth2]
+JWT_SECRET = {{ forgejo_secrets.JWT_SECRET }}
+
+[service]
+; Single-operator instance. Nobody should be creating their own account.
+DISABLE_REGISTRATION = true
+REQUIRE_SIGNIN_VIEW = false
+DEFAULT_KEEP_EMAIL_PRIVATE = true
+
+[packages]
+; The container registry lives here.
+ENABLED = true
+CHUNKED_UPLOAD_PATH = /var/lib/forgejo/data/tmp/package-upload
+
+[actions]
+ENABLED = true
+DEFAULT_ACTIONS_URL = github
+
+[log]
+MODE = console
+LEVEL = info
+ROOT_PATH = /var/lib/forgejo/log
+
+[cron.update_mirrors]
+; Pull mirrors sync on this schedule; push mirrors fire on push.
+SCHEDULE = @every 30m

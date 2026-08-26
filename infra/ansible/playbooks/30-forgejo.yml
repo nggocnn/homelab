@@ -1,0 +1,14 @@
+---
+# Forgejo: git, container registry and Actions runners.
+#
+#   ansible-playbook playbooks/30-forgejo.yml
+- name: Install Forgejo
+  hosts: forgejo
+  gather_facts: true
+  vars:
+    _fj: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/forgejo.sops.yaml') | from_yaml }}"
+    forgejo_admin_user: "{{ _fj.forgejo_admin_user }}"
+    forgejo_admin_password: "{{ _fj.forgejo_admin_password }}"
+    forgejo_admin_email: "{{ _fj.forgejo_admin_email }}"
+  roles:
+    - forgejo
