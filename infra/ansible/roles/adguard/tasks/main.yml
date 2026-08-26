@@ -1,0 +1,69 @@
+---
+- name: Check whether AdGuard Home is already installed
+  ansible.builtin.stat:
+    path: /opt/AdGuardHome/AdGuardHome
+  register: _agh
+
+- name: Install AdGuard Home
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v
+  args:
+    executable: /bin/bash
+  when: not _agh.stat.exists
+
+# AdGuard rewrites its own config at runtime (schema migrations, runtime state),
+# so templating the whole file every run would rewrite and restart DNS each
+# time. Compare only the settings this repo owns and rewrite on drift.
+- name: Read the current configuration
+  ansible.builtin.slurp:
+    src: /opt/AdGuardHome/AdGuardHome.yaml
+  register: _aghcfg
+  failed_when: false
+
+- name: Decide whether the config needs rewriting
+  ansible.builtin.set_fact:
+    _agh_drifted: >-
+      {{ _aghcfg.content is not defined
+         or (_aghcfg.content | b64decode | from_yaml).dns.upstream_dns | default([]) | sort
+            != adguard_upstream_dns | sort
+         or (_aghcfg.content | b64decode | from_yaml).dns.bind_hosts | default([]) | sort
+            != [adguard_listen_address]
+         or ((_aghcfg.content | b64decode | from_yaml).users | default([]) | map(attribute='name') | list)
+            != [adguard_admin_user] }}
+
+- name: Write the AdGuard Home configuration
+  ansible.builtin.template:
+    src: AdGuardHome.yaml.j2
+    dest: /opt/AdGuardHome/AdGuardHome.yaml
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  when: _agh_drifted | bool
+  notify: restart adguardhome
+
+- name: Ensure AdGuardHome is enabled and running
+  ansible.builtin.service:
+    name: AdGuardHome
+    enabled: true
+    state: started
+
+- name: Flush handlers so the service picks up config before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for DNS to answer
+  ansible.builtin.wait_for:
+    host: "{{ adguard_listen_address }}"
+    port: 53
+    timeout: 60
+
+- name: Resolve a name through AdGuard
+  ansible.builtin.command: dig +short +time=5 +tries=2 @{{ adguard_listen_address }} example.com A
+  register: _dig
+  changed_when: false
+  failed_when: _dig.stdout | trim == ""
+
+- name: Show resolution result
+  ansible.builtin.debug:
+    msg: "AdGuard resolves example.com -> {{ _dig.stdout_lines | join(', ') }}"

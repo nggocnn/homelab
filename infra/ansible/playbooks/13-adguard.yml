@@ -1,0 +1,19 @@
+---
+# AdGuard Home - the upstream half of the DNS chain.
+# Only Pi-hole queries it; it talks to the public internet over DNS-over-TLS.
+#
+#   ansible-playbook playbooks/13-adguard.yml
+- name: Install and configure AdGuard Home
+  hosts: adguard
+  gather_facts: true
+  vars:
+    _dns_secrets: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/dns.sops.yaml') | from_yaml }}"
+    adguard_admin_user: "{{ _dns_secrets.adguard_admin_user }}"
+    adguard_admin_bcrypt: "{{ _dns_secrets.adguard_admin_bcrypt }}"
+  pre_tasks:
+    - name: Ensure dig is available for verification
+      ansible.builtin.apt:
+        name: dnsutils
+        state: present
+  roles:
+    - adguard

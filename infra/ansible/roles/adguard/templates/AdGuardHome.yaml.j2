@@ -1,0 +1,45 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+http:
+  address: {{ adguard_listen_address }}:{{ adguard_web_port }}
+users:
+  - name: {{ adguard_admin_user }}
+    password: {{ adguard_admin_bcrypt }}
+auth_attempts: 5
+block_auth_min: 15
+dns:
+  bind_hosts:
+    - {{ adguard_listen_address }}
+  port: 53
+  upstream_dns:
+{% for u in adguard_upstream_dns %}
+    - {{ u }}
+{% endfor %}
+  bootstrap_dns:
+{% for b in adguard_bootstrap_dns %}
+    - {{ b }}
+{% endfor %}
+  upstream_mode: load_balance
+  # Pi-hole is the only client, and it is already rate-limiting for the LAN.
+  ratelimit: 0
+  enable_dnssec: true
+  cache_size: 4194304
+  cache_ttl_min: 60
+filtering:
+  protection_enabled: true
+  filtering_enabled: true
+filters:
+  - enabled: true
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+    name: AdGuard DNS filter
+    id: 1
+  - enabled: true
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
+    name: AdAway Default Blocklist
+    id: 2
+querylog:
+  enabled: true
+  interval: 168h
+statistics:
+  enabled: true
+  interval: 168h
+schema_version: 29

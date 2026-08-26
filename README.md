@@ -153,10 +153,13 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/10-guest-base.yml     update/upgrade + curl in every container
       playbooks/11-cloudflared.yml    cloudflared from Cloudflare's apt repo
       playbooks/12-tailscale.yml      tailscale subnet router (needs auth key)
+      playbooks/13-adguard.yml        AdGuard Home - upstream resolver
+      playbooks/14-pihole.yml         Pi-hole - client-facing resolver
     infra/opentofu/
       pools.tf  templates.tf  containers.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
+    secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -263,14 +266,13 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 DNS is a **chain**, not an HA pair: clients → **Pi-hole `.104`** → **AdGuard `.105`** →
 public upstream. HA DNS is explicitly out of scope for now; `.50` stays reserved.
 
-- [ ] **Pi-hole LXC `.104`**, using AdGuard as its upstream.
-- [ ] **AdGuard LXC `.105`**, using a public resolver (Quad9 / Cloudflare) upstream.
-- [ ] **Decide the failure posture.** The chain has no redundancy — if AdGuard is down,
-      Pi-hole has no upstream and *all* DNS fails. Either give Pi-hole a public
-      resolver as a secondary upstream, or hand clients an external secondary DNS.
-      Either choice leaks some ad-blocking when the primary path is down; a working
-      internet is worth more than perfect blocking. Pick one deliberately.
-- [ ] Pin Pi-hole and AdGuard to **different physical nodes**.
+- [x] **Pi-hole LXC `.104`**, using AdGuard as its upstream.
+- [x] **AdGuard LXC `.105`**, using a public resolver (Quad9 / Cloudflare) upstream.
+- [x] **Failure posture: fail soft.** Pi-hole has two upstreams — AdGuard `.105`
+      first, then `9.9.9.9`. If AdGuard dies, DNS keeps working and Pi-hole's own
+      blocklists still apply; only AdGuard's filtering layer is lost. Verified by
+      stopping AdGuard and confirming resolution and blocking both continued.
+- [x] Pin Pi-hole and AdGuard to **different physical nodes**.
 - [ ] Internal `*.nggocnn.io` records → Traefik at `.51`; external stays on the
       Cloudflare tunnel. **DNS must not sit behind Traefik** — that is a dependency cycle.
 - [ ] Move Cloudflare tunnel **routes into git** (Terraform Cloudflare provider + file config).

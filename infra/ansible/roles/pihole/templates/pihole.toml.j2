@@ -1,0 +1,32 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+[dns]
+  upstreams = [{% for u in pihole_upstreams %}"{{ u }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+  domain = "{{ pve_domain | default('nggocnn.io') }}"
+  interface = "{{ pihole_interface }}"
+  listeningMode = "BIND"
+  expandHosts = true
+  domainNeeded = true
+  bogusPriv = true
+  dnssec = false
+
+[dhcp]
+  active = false
+
+# FTL's NTP client cannot adjust the clock inside an unprivileged container and
+# logs an error every 10 minutes trying. The Proxmox host keeps time via chrony,
+# which the container inherits.
+[ntp]
+  [ntp.ipv4]
+    active = false
+  [ntp.ipv6]
+    active = false
+  [ntp.sync]
+    active = false
+
+[webserver]
+  domain = "{{ pihole_listen_address }}"
+  [webserver.api]
+    password = "{{ pihole_web_password }}"
+
+[files]
+  macvendor = "/etc/pihole/macvendor.db"

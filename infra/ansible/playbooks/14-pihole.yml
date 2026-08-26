@@ -1,0 +1,18 @@
+---
+# Pi-hole - the client-facing half of the DNS chain.
+# Upstreams: AdGuard .105 first, public resolver as fallback.
+#
+#   ansible-playbook playbooks/14-pihole.yml
+- name: Install and configure Pi-hole
+  hosts: pihole
+  gather_facts: true
+  vars:
+    _dns_secrets: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/dns.sops.yaml') | from_yaml }}"
+    pihole_web_password: "{{ _dns_secrets.pihole_web_password }}"
+  pre_tasks:
+    - name: Ensure dig is available for verification
+      ansible.builtin.apt:
+        name: dnsutils
+        state: present
+  roles:
+    - pihole
