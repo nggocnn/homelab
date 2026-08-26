@@ -1,0 +1,72 @@
+---
+- name: Install Prometheus and Alertmanager
+  ansible.builtin.apt:
+    name:
+      - prometheus
+      - prometheus-alertmanager
+    state: present
+
+- name: Ensure the rules directory exists
+  ansible.builtin.file:
+    path: /etc/prometheus/rules
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "promtool check config %s"
+  notify: restart prometheus
+
+- name: Write the alert rules
+  ansible.builtin.template:
+    src: alerts.yml.j2
+    dest: /etc/prometheus/rules/alerts.yml
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "promtool check rules %s"
+  notify: restart prometheus
+
+- name: Ensure Prometheus and Alertmanager are running
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - prometheus
+    - prometheus-alertmanager
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Prometheus
+  ansible.builtin.uri:
+    url: "http://localhost:{{ prometheus_port }}/-/ready"
+    status_code: 200
+  retries: 10
+  delay: 3
+  register: _ready
+  until: _ready.status == 200
+
+- name: Check every scrape target is up
+  ansible.builtin.uri:
+    url: "http://localhost:{{ prometheus_port }}/api/v1/targets?state=active"
+    return_content: true
+  register: _targets
+  retries: 10
+  delay: 6
+  until: >-
+    (_targets.json.data.activeTargets | selectattr('health', 'ne', 'up') | list | length) == 0
+
+- name: Report target health
+  ansible.builtin.debug:
+    msg: >-
+      {{ _targets.json.data.activeTargets | length }} targets, all up:
+      {{ _targets.json.data.activeTargets | map(attribute='labels.instance') | list | join(', ') }}

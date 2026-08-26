@@ -1,0 +1,11 @@
+---
+# node_exporter on the hypervisors, with the collectors that expose the
+# hardware this cluster actually needs watching: temperatures, fan speed and
+# package power draw.
+#
+#   ansible-playbook playbooks/20-node-exporter.yml
+- name: Install node_exporter on the Proxmox hosts
+  hosts: pve
+  gather_facts: true
+  roles:
+    - node_exporter
