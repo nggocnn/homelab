@@ -1,0 +1,13 @@
+---
+# Single static binary, pinned with the checksum Forgejo publishes alongside it.
+forgejo_version: "16.0.3"
+forgejo_sha256: "90afc533a9025a0d916543f8aca79e65c8df141cfe51f298197789e78d5af97d"
+
+forgejo_http_port: 3000
+forgejo_ssh_port: 22
+forgejo_domain: "10.10.10.143"
+forgejo_root_url: "http://10.10.10.143:3000/"
+
+# Sqlite, not Postgres: one user, a handful of repositories. A separate
+# database server would be more to run and back up for no benefit here.
+forgejo_db_type: "sqlite3"

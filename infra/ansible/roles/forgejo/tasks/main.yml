@@ -1,0 +1,172 @@
+---
+- name: Install runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - git-lfs
+      - sqlite3
+    state: present
+
+- name: Create the git service account
+  ansible.builtin.user:
+    name: git
+    system: true
+    shell: /bin/bash
+    home: /var/lib/forgejo
+    create_home: true
+
+- name: Create Forgejo directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: git
+    group: git
+    mode: "0750"
+  loop:
+    - /var/lib/forgejo
+    - /var/lib/forgejo/data
+    - /var/lib/forgejo/log
+    - /var/lib/forgejo/custom
+    - /etc/forgejo
+
+- name: Check the installed version
+  ansible.builtin.command: /usr/local/bin/forgejo --version
+  register: _fjver
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install the Forgejo binary
+  ansible.builtin.get_url:
+    url: "https://codeberg.org/forgejo/forgejo/releases/download/v{{ forgejo_version }}/forgejo-{{ forgejo_version }}-linux-amd64"
+    dest: /usr/local/bin/forgejo
+    checksum: "sha256:{{ forgejo_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: forgejo_version not in (_fjver.stdout | default(''))
+  notify: restart forgejo
+
+- name: Install the secret generator
+  ansible.builtin.copy:
+    src: gen-secrets.sh
+    dest: /usr/local/sbin/forgejo-gen-secrets
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Generate any missing secrets
+  ansible.builtin.command: /usr/local/sbin/forgejo-gen-secrets
+  changed_when: false
+
+- name: Read the secrets
+  ansible.builtin.slurp:
+    src: /var/lib/forgejo/.secrets
+  register: _fjsecrets
+  no_log: true
+
+- name: Settle the secret values
+  ansible.builtin.set_fact:
+    forgejo_secrets: "{{ dict(_fjsecrets.content | b64decode | trim | split('\n') | map('split', '=', 1)) }}"
+  no_log: true
+
+- name: Write app.ini
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: /etc/forgejo/app.ini
+    owner: root
+    group: git
+    mode: "0640"
+  no_log: true
+  notify: restart forgejo
+
+- name: Install the systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/forgejo.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note | default('Managed by Ansible') }}
+      [Unit]
+      Description=Forgejo
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=git
+      Group=git
+      WorkingDirectory=/var/lib/forgejo
+      ExecStart=/usr/local/bin/forgejo web --config /etc/forgejo/app.ini
+      Environment=USER=git HOME=/var/lib/forgejo GITEA_WORK_DIR=/var/lib/forgejo
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - reload systemd for forgejo
+    - restart forgejo
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Forgejo is enabled and running
+  ansible.builtin.systemd_service:
+    name: forgejo
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for Forgejo to answer
+  ansible.builtin.uri:
+    url: "http://{{ forgejo_domain }}:{{ forgejo_http_port }}/api/healthz"
+    return_content: true
+  register: _fjhealth
+  retries: 20
+  delay: 5
+  until: _fjhealth.status | default(0) == 200
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "Forgejo {{ forgejo_version }} healthy: {{ _fjhealth.json.status | default('?') }}"
+
+# --- admin account ------------------------------------------------------------
+- name: Check whether the admin user exists
+  # runuser, not become_user: the container image ships no sudo, and adding a
+  # package purely to drop privileges is not worth it.
+  ansible.builtin.command: >-
+    runuser -u git -- /usr/local/bin/forgejo admin user list --config /etc/forgejo/app.ini
+  environment:
+    GITEA_WORK_DIR: /var/lib/forgejo
+  register: _fjusers
+  changed_when: false
+
+- name: Create the admin user
+  ansible.builtin.command: >-
+    runuser -u git -- /usr/local/bin/forgejo admin user create
+    --config /etc/forgejo/app.ini
+    --admin
+    --username {{ forgejo_admin_user }}
+    --password {{ forgejo_admin_password }}
+    --email {{ forgejo_admin_email }}
+    --must-change-password=false
+  environment:
+    GITEA_WORK_DIR: /var/lib/forgejo
+  when: forgejo_admin_user not in _fjusers.stdout
+  no_log: true
+
+- name: Confirm the admin can authenticate
+  ansible.builtin.uri:
+    url: "http://{{ forgejo_domain }}:{{ forgejo_http_port }}/api/v1/user"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: _fjme
+  no_log: true
+
+- name: Report the admin account
+  ansible.builtin.debug:
+    msg: "admin '{{ _fjme.json.login }}' (admin={{ _fjme.json.is_admin }})"

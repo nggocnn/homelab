@@ -165,15 +165,17 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/24-ntfy.yml           ntfy notification sink (Alertmanager target)
       playbooks/25-loki.yml           Loki log aggregation
       playbooks/26-alloy.yml          Grafana Alloy ships journals to Loki
+      playbooks/30-forgejo.yml        Forgejo: git, registry, Actions
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
-      pbs.tf  backup.tf  monitoring.tf  svc-core.tf
+      pbs.tf  backup.tf  monitoring.tf  svc-core.tf  forgejo.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
     secrets/pbs.sops.yaml             PBS token + TLS fingerprint
     secrets/monitoring.sops.yaml      read-only PVE token for pve-exporter
     secrets/grafana.sops.yaml         Grafana admin credentials
+    secrets/forgejo.sops.yaml         Forgejo admin credentials
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -302,7 +304,9 @@ public upstream. HA DNS is explicitly out of scope for now; `.50` stays reserved
 
 ### Phase 5 — CI/CD & GitOps
 
-- [ ] **Forgejo LXC** `.143`: Git SCM + **Container Registry** + Forgejo Actions runners.
+- [x] **Forgejo LXC** `.143`: Forgejo 16.0.3, sqlite, registration disabled,
+      container registry and Actions enabled. Admin account provisioned.
+      Actions *runner* not yet registered.
 - [ ] **Mirror to GitHub**: Forgejo push-mirroring. GitHub stays the mirror-of-record
       and the bootstrap source — the forge cannot be the only home of the repo that
       deploys the forge.
@@ -497,6 +501,14 @@ Things that only surfaced because a step was checked rather than assumed:
   nodes therefore triples each series, and an alert written naively fires three
   times for one condition. Storage and guest alerts aggregate with
   `max by (id)`.
+- **Forgejo writes its own signing secrets into `app.ini` on first start**,
+  which fails when the config is not writable by the service account — and the
+  errors arrive one secret at a time (`JWT_SECRET`, then `LFS_JWT_SECRET`).
+  Generated up front by a script instead, so `app.ini` stays declarative and
+  read-only. They must persist: regenerating any of them invalidates every
+  session and stored credential.
+- **Debian LXC images ship no `sudo`.** `become_user` fails with
+  `sudo: not found`; `runuser -u <user> --` needs no extra package.
 - **Promtail reached end-of-life in March 2026.** Grafana Alloy replaces it;
   anything still recommending Promtail is out of date.
 - **Alloy overwrites the `job` label with its component path.** Setting
