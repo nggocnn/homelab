@@ -1,0 +1,10 @@
+---
+# Homepage: one entry point for every service UI in the cluster.
+#
+#   ansible-playbook playbooks/32-homepage.yml
+- name: Install Homepage
+  hosts: svc-core
+  gather_facts: true
+  roles:
+    - docker
+    - homepage

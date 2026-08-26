@@ -1,0 +1,13 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+- resources:
+    cpu: true
+    memory: true
+    disk: /
+- search:
+    provider: duckduckgo
+    target: _blank
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short

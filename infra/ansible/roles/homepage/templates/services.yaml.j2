@@ -1,0 +1,58 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+# Grouped by the same function blocks as the IP plan, so this dashboard and
+# README.md describe the same structure.
+- Infrastructure:
+    - Proxmox pve-01:
+        href: https://10.10.10.11:8006/
+        description: Hypervisor - i7-9700, 24GB
+        siteMonitor: https://10.10.10.11:8006/
+    - Proxmox pve-02:
+        href: https://10.10.10.12:8006/
+        description: Hypervisor - i7-8700, 24GB
+        siteMonitor: https://10.10.10.12:8006/
+    - Proxmox pve-03:
+        href: https://10.10.10.13:8006/
+        description: Hypervisor - i7-8700, 24GB
+        siteMonitor: https://10.10.10.13:8006/
+    - Proxmox Backup Server:
+        href: https://10.10.10.148:8007/
+        description: Backups - the only recovery path (no replication)
+        siteMonitor: https://10.10.10.148:8007/
+
+- Monitoring:
+    - Grafana:
+        href: http://10.10.10.142:3000/
+        description: Dashboards - Prometheus + Loki
+        siteMonitor: http://10.10.10.142:3000/api/health
+    - Prometheus:
+        href: http://10.10.10.142:9090/
+        description: Metrics and alert rules
+        siteMonitor: http://10.10.10.142:9090/-/ready
+    - Alertmanager:
+        href: http://10.10.10.142:9093/
+        description: Routes alerts to ntfy
+        siteMonitor: http://10.10.10.142:9093/-/ready
+    - Loki:
+        href: http://10.10.10.142:3100/
+        description: Logs from all three hypervisors
+        siteMonitor: http://10.10.10.142:3100/ready
+    - ntfy:
+        href: http://10.10.10.141:8080/
+        description: Notifications - topic homelab-alerts
+        siteMonitor: http://10.10.10.141:8080/v1/health
+
+- Network:
+    - Pi-hole:
+        href: http://10.10.10.104/admin
+        description: Client-facing DNS and ad-blocking
+        siteMonitor: http://10.10.10.104/admin
+    - AdGuard Home:
+        href: http://10.10.10.105:3000/
+        description: Upstream resolver - DNS-over-TLS
+        siteMonitor: http://10.10.10.105:3000/
+
+- Development:
+    - Forgejo:
+        href: http://10.10.10.143:3000/
+        description: Git, container registry, Actions
+        siteMonitor: http://10.10.10.143:3000/api/healthz

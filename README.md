@@ -167,6 +167,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/26-alloy.yml          Grafana Alloy ships journals to Loki
       playbooks/30-forgejo.yml        Forgejo: git, registry, Actions
       playbooks/31-ci-runner.yml      Forgejo Actions runner (Docker executor)
+      playbooks/32-homepage.yml       Homepage dashboard on svc-core
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
       pbs.tf  backup.tf  monitoring.tf  svc-core.tf

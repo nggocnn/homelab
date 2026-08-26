@@ -76,7 +76,7 @@
   vars:
     container_features:
       142: "nesting=1"                # monitoring: prometheus/grafana
-      141: "nesting=1"                # svc-core
+      141: "nesting=1,keyctl=1"       # svc-core: docker (homepage, later traefik)
       143: "nesting=1"                # forgejo
       152: "nesting=1,keyctl=1"       # ci-runner: docker
   tasks:

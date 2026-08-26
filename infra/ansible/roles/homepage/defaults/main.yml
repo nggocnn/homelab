@@ -1,0 +1,5 @@
+---
+homepage_port: 3000
+homepage_dir: /opt/homepage
+homepage_image: "ghcr.io/gethomepage/homepage:v1.6.0"
+homepage_allowed_hosts: "10.10.10.141:3000,homepage.nggocnn.io"
