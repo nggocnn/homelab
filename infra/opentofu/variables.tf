@@ -25,3 +25,26 @@ variable "guest_ssh_public_key_path" {
   type        = string
   default     = "~/.ssh/pve.nggocnn.io.pub"
 }
+
+# --- PBS (supplied from SOPS by ./tofu.sh) -----------------------------------
+variable "pbs_server" {
+  type    = string
+  default = ""
+}
+variable "pbs_datastore" {
+  type    = string
+  default = ""
+}
+variable "pbs_auth_id" {
+  type    = string
+  default = ""
+}
+variable "pbs_token_secret" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+variable "pbs_fingerprint" {
+  type    = string
+  default = ""
+}
