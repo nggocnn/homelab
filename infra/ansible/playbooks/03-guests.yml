@@ -61,34 +61,54 @@
       check_mode: false
       failed_when: "'snippets' not in (_after.stdout | from_json).content"
 
-# Debian services hardened with systemd user namespaces (prometheus, grafana,
-# and others) fail in an unprivileged container without nesting. The API allows
-# setting nesting alone, but rejects the provider's write because it sends the
-# whole feature struct - so it is set here instead.
-- name: Enable nesting on containers that need it
-  hosts: pve_primary
+# Container feature flags.
+#
+# nesting: Debian services hardened with systemd user namespaces (prometheus,
+#   grafana) fail without it.
+# keyctl:  Docker needs it for its kernel keyring use.
+#
+# Set here rather than in OpenTofu: the API rejects the provider's write
+# because it sends the whole feature struct, and everything except nesting is
+# root@pam-only. Ansible reaches the host as root, so it can set all of them.
+- name: Set container feature flags
+  hosts: pve
   gather_facts: false
   vars:
-    nesting_ctids: [142]
+    container_features:
+      142: "nesting=1"                # monitoring: prometheus/grafana
+      141: "nesting=1"                # svc-core
+      143: "nesting=1"                # forgejo
+      152: "nesting=1,keyctl=1"       # ci-runner: docker
   tasks:
-    - name: Check current features
-      ansible.builtin.command: pct config {{ item }}
+    - name: Find which containers live on this node
+      ansible.builtin.command: pct list
+      register: _pctlist
+      changed_when: false
+      check_mode: false
+
+    - name: Read current features
+      ansible.builtin.command: pct config {{ item.key }}
+      loop: "{{ container_features | dict2items }}"
+      loop_control:
+        label: "ct {{ item.key }}"
+      when: "item.key | string in _pctlist.stdout"
       register: _ctfeat
       changed_when: false
       check_mode: false
-      loop: "{{ nesting_ctids }}"
 
-    - name: Enable nesting
-      ansible.builtin.command: pct set {{ item.item }} --features nesting=1
-      when: "'nesting=1' not in item.stdout"
+    - name: Apply feature flags
+      ansible.builtin.command: pct set {{ item.item.key }} --features {{ item.item.value }}
       loop: "{{ _ctfeat.results }}"
       loop_control:
-        label: "ct {{ item.item }}"
-      register: _nested
+        label: "ct {{ item.item.key | default('') }} -> {{ item.item.value | default('') }}"
+      when:
+        - not item.skipped | default(false)
+        - "'features: ' ~ item.item.value not in item.stdout"
+      register: _featset
 
-    - name: Restart containers that gained nesting
-      ansible.builtin.command: pct reboot {{ item.item.item }}
-      when: item is changed
-      loop: "{{ _nested.results }}"
+    - name: Restart containers whose features changed
+      ansible.builtin.command: pct reboot {{ item.item.item.key }}
+      loop: "{{ _featset.results }}"
       loop_control:
-        label: "ct {{ item.item.item | default('') }}"
+        label: "ct {{ item.item.item.key | default('') }}"
+      when: item is changed
