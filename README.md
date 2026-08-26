@@ -156,7 +156,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/13-adguard.yml        AdGuard Home - upstream resolver
       playbooks/14-pihole.yml         Pi-hole - client-facing resolver
     infra/opentofu/
-      pools.tf  templates.tf  containers.tf
+      pools.tf  templates.tf  containers.tf  vm-template.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
@@ -245,7 +245,10 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
       restic/rclone of *configs and small state* to a free-tier object store (B2 / R2).
       Full VM images stay local. The local copy dies with `pve-01` — the offsite leg is
       not optional.
-- [ ] Build a **cloud-init VM template** and an LXC template baseline as clone sources.
+- [x] Build a **cloud-init VM template** and an LXC template baseline as clone sources.
+      Debian 13 genericcloud, one template per node (9001-9003) since local storage
+      is not shared. Cloud-init user-data installs `qemu-guest-agent` — without it
+      `vzdump` cannot fsfreeze and backups are only crash-consistent.
 
 ### Phase 3 — Core services
 
