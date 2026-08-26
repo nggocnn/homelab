@@ -1,0 +1,10 @@
+---
+# Grafana Alloy ships the systemd journal from each hypervisor to Loki.
+# Promtail reached end-of-life in March 2026; Alloy is its replacement.
+#
+#   ansible-playbook playbooks/26-alloy.yml
+- name: Ship logs to Loki
+  hosts: pve
+  gather_facts: true
+  roles:
+    - alloy

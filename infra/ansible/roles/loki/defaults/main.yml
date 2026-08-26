@@ -1,0 +1,5 @@
+---
+loki_port: 3100
+# The monitoring container has 32 GB. Logs are for debugging the recent past,
+# not archival, so retention is deliberately short.
+loki_retention: "336h"   # 14 days

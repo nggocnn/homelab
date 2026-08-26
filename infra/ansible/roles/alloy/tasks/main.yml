@@ -1,0 +1,50 @@
+---
+- name: Install the Grafana signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+- name: Install Alloy
+  ansible.builtin.apt:
+    name: alloy
+    state: present
+    update_cache: true
+
+- name: Configure Alloy
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart alloy
+
+# Reading the journal requires membership of systemd-journal; without it Alloy
+# starts cleanly and ships nothing.
+- name: Allow Alloy to read the journal
+  ansible.builtin.user:
+    name: alloy
+    groups: systemd-journal
+    append: true
+  notify: restart alloy
+
+- name: Ensure Alloy is enabled and running
+  ansible.builtin.service:
+    name: alloy
+    enabled: true
+    state: started
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
