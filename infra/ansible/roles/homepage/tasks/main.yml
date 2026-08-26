@@ -1,0 +1,52 @@
+---
+- name: Create the Homepage directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ homepage_dir }}"
+    - "{{ homepage_dir }}/config"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ homepage_dir }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart homepage
+
+- name: Write the Homepage configuration
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ homepage_dir }}/config/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - settings.yaml
+    - services.yaml
+    - widgets.yaml
+  notify: restart homepage
+
+- name: Start Homepage
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ homepage_dir }}"
+  register: _hpup
+  changed_when: "'Started' in _hpup.stderr or 'Created' in _hpup.stderr"
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Homepage to answer
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:{{ homepage_port }}/"
+    status_code: 200
+  register: _hp
+  retries: 20
+  delay: 5
+  until: _hp.status | default(0) == 200

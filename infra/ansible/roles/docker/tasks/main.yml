@@ -1,0 +1,51 @@
+---
+# Docker inside an unprivileged LXC needs nesting=1 and keyctl=1 on the
+# container (set by playbooks/03-guests.yml, not here).
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+
+- name: Install the Docker signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Docker apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is running
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Verify Docker works inside the container
+  ansible.builtin.command: docker info --format '{{ "{{.ServerVersion}}" }}'
+  register: _dockerver
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: _dockerver.rc == 0
