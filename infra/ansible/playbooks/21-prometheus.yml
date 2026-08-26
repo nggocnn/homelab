@@ -1,0 +1,9 @@
+---
+# Prometheus + Alertmanager.
+#
+#   ansible-playbook playbooks/21-prometheus.yml
+- name: Install Prometheus and Alertmanager
+  hosts: monitoring
+  gather_facts: true
+  roles:
+    - prometheus

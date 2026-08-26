@@ -1,0 +1,8 @@
+---
+node_exporter_port: 9100
+# hwmon = temperatures and fan speeds, rapl = package power draw. Neither is
+# enabled by default, and both are the point of monitoring these boxes.
+node_exporter_collectors:
+  - hwmon
+  - rapl
+  - systemd

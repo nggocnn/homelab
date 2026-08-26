@@ -60,3 +60,35 @@
       changed_when: false
       check_mode: false
       failed_when: "'snippets' not in (_after.stdout | from_json).content"
+
+# Debian services hardened with systemd user namespaces (prometheus, grafana,
+# and others) fail in an unprivileged container without nesting. The API allows
+# setting nesting alone, but rejects the provider's write because it sends the
+# whole feature struct - so it is set here instead.
+- name: Enable nesting on containers that need it
+  hosts: pve_primary
+  gather_facts: false
+  vars:
+    nesting_ctids: [142]
+  tasks:
+    - name: Check current features
+      ansible.builtin.command: pct config {{ item }}
+      register: _ctfeat
+      changed_when: false
+      check_mode: false
+      loop: "{{ nesting_ctids }}"
+
+    - name: Enable nesting
+      ansible.builtin.command: pct set {{ item.item }} --features nesting=1
+      when: "'nesting=1' not in item.stdout"
+      loop: "{{ _ctfeat.results }}"
+      loop_control:
+        label: "ct {{ item.item }}"
+      register: _nested
+
+    - name: Restart containers that gained nesting
+      ansible.builtin.command: pct reboot {{ item.item.item }}
+      when: item is changed
+      loop: "{{ _nested.results }}"
+      loop_control:
+        label: "ct {{ item.item.item | default('') }}"

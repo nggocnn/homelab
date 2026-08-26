@@ -158,8 +158,11 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/15-pbs.yml            Proxmox Backup Server
       playbooks/16-pbs-access.yml     PBS backup token + TLS fingerprint
       playbooks/17-tailscale-hosts.yml  Tailscale on the hypervisors (out-of-band)
+      playbooks/20-node-exporter.yml  node_exporter + hwmon/rapl sensors
+      playbooks/21-prometheus.yml     Prometheus + Alertmanager + alert rules
     infra/opentofu/
-      pools.tf  templates.tf  containers.tf  vm-template.tf  pbs.tf  backup.tf
+      pools.tf  templates.tf  containers.tf  vm-template.tf
+      pbs.tf  backup.tf  monitoring.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
@@ -261,9 +264,11 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
       remains and is verified working after every OIDC change.
 - [ ] **Monitoring stack**: Prometheus, Grafana, Loki, Alertmanager; Uptime Kuma;
       alerts → **ntfy + Telegram bot**.
-- [ ] **Host sensors**: enable node_exporter `hwmon` + `rapl` collectors (temperature,
-      fan speed where exposed, power draw); run `sensors-detect` per node. Add an
-      **NVMe wearout** alert, and a **`local-lvm` thin-pool usage** alert (see Storage).
+- [x] **Host sensors**: node_exporter with `hwmon` + `rapl` collectors on all three
+      nodes. RAPL energy counters are root-only since the PLATYPUS mitigation, so
+      `rapl-perms.service` grants the `prometheus` group read access — without it
+      the collector reports success with no metrics. Alerts cover node down, root
+      filesystem, NVMe wearout, CPU temperature, and collector failure.
 - [ ] **Pulse** as an additional Proxmox-native real-time monitoring view.
 - [ ] **Homepage** dashboard with Proxmox/Docker/service widgets.
 - [ ] Quality-of-life apps: Vaultwarden, browser workspace, remote desktop.
@@ -470,6 +475,13 @@ Things that only surfaced because a step was checked rather than assumed:
   it retries the bind.
 - **A backup that writes is not a backup that restores.** The restore drill is
   the only thing that proved the chain end to end.
+- **Two monitoring collectors fail silently.** `hwmon` and `rapl` report
+  `success=0` and emit nothing rather than erroring, so a permissions problem
+  looks identical to "this hardware has no sensors". The role asserts on both
+  metrics, and an alert fires if either collector starts failing later.
+- **Unprivileged LXC needs `nesting=1` for systemd-hardened services.** Debian's
+  `prometheus.service` uses `PrivateUsers`, which fails with "Failed to set up
+  user namespacing". Grafana and Loki will need the same.
 
 ---
 

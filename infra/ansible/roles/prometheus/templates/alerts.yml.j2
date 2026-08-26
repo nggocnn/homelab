@@ -1,0 +1,44 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+#
+# Alerts aimed at the failure modes THIS cluster has, not a generic set.
+groups:
+  - name: hosts
+    rules:
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ '{{ $labels.instance }}' }} is not responding"
+          description: "There is no replication here, so a node loss means restoring its guests from PBS."
+
+      - alert: RootFilesystemFilling
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ '{{ $labels.instance }}' }} root filesystem below 15% free"
+
+      # Consumer NVMe with no power-loss protection, and no UPS. Worth watching.
+      - alert: NVMeWearoutHigh
+        expr: node_nvme_info_percentage_used_ratio > 0.8
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ '{{ $labels.instance }}' }} NVMe at {{ '{{ $value | humanizePercentage }}' }} wearout"
+
+      - alert: CPUTemperatureHigh
+        expr: max by (instance) (node_hwmon_temp_celsius) > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ '{{ $labels.instance }}' }} running at {{ '{{ $value }}' }}C"
+          description: "P330 Tiny chassis - check for dust before assuming a sensor fault."
+
+      - alert: NodeExporterSensorsMissing
+        expr: node_scrape_collector_success{collector=~"hwmon|rapl"} == 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ '{{ $labels.collector }}' }} collector failing on {{ '{{ $labels.instance }}' }}"
+          description: "These collectors report success=0 rather than erroring, so without this alert they fail silently."

@@ -1,0 +1,108 @@
+---
+- name: Install node_exporter and sensor tooling
+  ansible.builtin.apt:
+    name:
+      - prometheus-node-exporter
+      - lm-sensors
+    state: present
+
+# sensors-detect normally asks a long series of questions; --auto takes the
+# safe defaults. Without it hwmon exposes little or nothing.
+- name: Detect hardware sensors
+  ansible.builtin.command: sensors-detect --auto
+  register: _sensors
+  changed_when: "'Starting' in _sensors.stdout"
+
+# RAPL energy counters are root-only since the PLATYPUS side-channel
+# mitigation, so node_exporter (running as `prometheus`) reads nothing and the
+# rapl collector silently reports success=0 with no metrics.
+#
+# Group-read is granted by a boot-time unit rather than udev: the paths under
+# /sys/class/powercap are symlinks, so a recursive chgrp there does not follow
+# through to the real attributes under /sys/devices.
+- name: Install the RAPL permissions unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/rapl-perms.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note | default('Managed by Ansible') }}
+      [Unit]
+      Description=Grant prometheus group read on RAPL energy counters
+      After=sysinit.target
+      Before=prometheus-node-exporter.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'chgrp -R prometheus /sys/devices/virtual/powercap/ && chmod -R g=u /sys/devices/virtual/powercap/'
+
+      [Install]
+      WantedBy=multi-user.target
+  register: _raplunit
+
+- name: Reload systemd for the RAPL unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _raplunit is changed
+
+- name: Enable and start the RAPL permissions unit
+  ansible.builtin.systemd_service:
+    name: rapl-perms.service
+    enabled: true
+    state: started
+  notify: restart node_exporter
+
+- name: Remove the superseded udev rule
+  ansible.builtin.file:
+    path: /etc/udev/rules.d/99-rapl-prometheus.rules
+    state: absent
+
+- name: Configure node_exporter collectors
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note | default('Managed by Ansible') }}
+      ARGS="{% for c in node_exporter_collectors %}--collector.{{ c }} {% endfor %}--web.listen-address=:{{ node_exporter_port }}"
+  notify: restart node_exporter
+
+- name: Ensure node_exporter is enabled and running
+  ansible.builtin.service:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify metrics are being served
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:{{ node_exporter_port }}/metrics"
+    return_content: true
+  register: _metrics
+  retries: 5
+  delay: 3
+  until: _metrics.status == 200
+
+- name: Confirm temperature and power metrics are present
+  ansible.builtin.assert:
+    that:
+      - "'node_hwmon_temp_celsius' in _metrics.content"
+      - "'node_rapl_package_joules_total' in _metrics.content"
+    fail_msg: >-
+      Missing sensor metrics on {{ inventory_hostname }}. Temperatures come from
+      hwmon (check `sensors`); power comes from RAPL, which needs rapl-perms.service
+      to have granted the prometheus group read on /sys/devices/virtual/powercap.
+      Both collectors report success=0 rather than erroring when they cannot read.
+    quiet: true
+
+- name: Report sensor readings
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}:
+      {{ _metrics.content.split('\n') | select('match', '^node_hwmon_temp_celsius') | list | length }} temp sensors,
+      {{ 'rapl power present' if 'node_rapl_' in _metrics.content else 'NO rapl power' }}
