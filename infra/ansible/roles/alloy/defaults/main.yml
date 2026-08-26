@@ -1,0 +1,4 @@
+---
+# Grafana Alloy, not Promtail: Promtail reached end-of-life in March 2026 and
+# receives no further updates.
+loki_push_url: "http://10.10.10.142:3100/loki/api/v1/push"

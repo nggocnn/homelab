@@ -1,0 +1,44 @@
+// {{ pve_managed_note | default('Managed by Ansible') }}
+// Ships the systemd journal to Loki. The journal is the single place Proxmox,
+// corosync, the kernel and every service already log to, so tailing files as
+// well would mostly duplicate it.
+
+loki.write "default" {
+  endpoint {
+    url = "{{ loki_push_url }}"
+  }
+}
+
+// Journal metadata arrives as __journal_* fields and is dropped unless promoted
+// to real labels. These rules come from discovery.relabel, not loki.relabel:
+// loki.source.journal takes its relabel_rules from the former.
+discovery.relabel "journal" {
+  targets = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  // Set here rather than via the source's `labels` argument: Alloy overwrites
+  // `job` with the component path, so a static label there is silently lost
+  // and every documented query like {job="systemd-journal"} returns nothing.
+  rule {
+    target_label = "job"
+    replacement  = "systemd-journal"
+  }
+}
+
+loki.source.journal "journal" {
+  forward_to    = [loki.write.default.receiver]
+  max_age       = "12h"
+  relabel_rules = discovery.relabel.journal.rules
+}

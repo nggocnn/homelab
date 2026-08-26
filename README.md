@@ -163,6 +163,8 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/22-pve-exporter.yml   pve-exporter (read-only PVEAuditor token)
       playbooks/23-grafana.yml        Grafana + provisioned datasource/dashboard
       playbooks/24-ntfy.yml           ntfy notification sink (Alertmanager target)
+      playbooks/25-loki.yml           Loki log aggregation
+      playbooks/26-alloy.yml          Grafana Alloy ships journals to Loki
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
       pbs.tf  backup.tf  monitoring.tf  svc-core.tf
@@ -270,8 +272,9 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 - [~] **Monitoring stack**: Prometheus, Alertmanager, Grafana and ntfy are up,
       with `node_exporter` and `pve-exporter` feeding them and a provisioned
       "Homelab overview" dashboard. Alert delivery verified end to end
-      (Alertmanager → ntfy, rendered readable). Telegram still to add (needs a
-      bot token); Loki and Uptime Kuma still to come.
+      (Alertmanager → ntfy, rendered readable). Loki collects the journal from
+      all three hypervisors via Grafana Alloy. Telegram still to add (needs a
+      bot token); Uptime Kuma still to come.
 - [x] **Host sensors**: node_exporter with `hwmon` + `rapl` collectors on all three
       nodes. RAPL energy counters are root-only since the PLATYPUS mitigation, so
       `rapl-perms.service` grants the `prometheus` group read access — without it
@@ -494,6 +497,15 @@ Things that only surfaced because a step was checked rather than assumed:
   nodes therefore triples each series, and an alert written naively fires three
   times for one condition. Storage and guest alerts aggregate with
   `max by (id)`.
+- **Promtail reached end-of-life in March 2026.** Grafana Alloy replaces it;
+  anything still recommending Promtail is out of date.
+- **Alloy overwrites the `job` label with its component path.** Setting
+  `labels = { job = "systemd-journal" }` on `loki.source.journal` is silently
+  lost, so every documented query like `{job="systemd-journal"}` returns
+  nothing while the data sits in Loki under `job="loki.source.journal.journal"`.
+  Set `job` in a `discovery.relabel` rule instead. Loki's own metrics
+  (`loki_distributor_lines_received_total`) are what proved the data was
+  arriving and the query was at fault.
 - **Debian's ntfy is too old to render alerts.** trixie ships 2.11.0, which
   predates message templating, so an Alertmanager webhook arrives as a raw JSON
   blob. Pinned to the upstream 2.27.0 binary with a checksum instead —

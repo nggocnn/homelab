@@ -1,0 +1,5 @@
+---
+- name: restart alloy
+  ansible.builtin.service:
+    name: alloy
+    state: restarted

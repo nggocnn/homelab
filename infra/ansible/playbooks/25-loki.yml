@@ -1,0 +1,9 @@
+---
+# Loki: log aggregation, single-binary mode with filesystem storage.
+#
+#   ansible-playbook playbooks/25-loki.yml
+- name: Install Loki
+  hosts: monitoring
+  gather_facts: true
+  roles:
+    - loki

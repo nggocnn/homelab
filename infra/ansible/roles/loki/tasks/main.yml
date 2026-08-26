@@ -1,0 +1,58 @@
+---
+- name: Install Loki
+  ansible.builtin.apt:
+    name: loki
+    state: present
+
+# Grafana's package creates the `loki` user with primary group `nogroup`, not
+# a matching `loki` group - so `group: loki` fails with "failed to look up
+# group". Discovered rather than assumed.
+- name: Discover the Loki service user's group
+  ansible.builtin.command: id -gn loki
+  register: _lokigrp
+  changed_when: false
+  check_mode: false
+
+- name: Ensure the Loki data directory exists
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: loki
+    group: "{{ _lokigrp.stdout | trim }}"
+    mode: "0750"
+  loop:
+    - /var/lib/loki
+    - /var/lib/loki/chunks
+    - /var/lib/loki/rules
+    - /var/lib/loki/compactor
+
+- name: Configure Loki
+  ansible.builtin.template:
+    src: loki.yml.j2
+    dest: /etc/loki/config.yml
+    owner: root
+    group: "{{ _lokigrp.stdout | trim }}"
+    mode: "0640"
+  notify: restart loki
+
+- name: Ensure Loki is enabled and running
+  ansible.builtin.service:
+    name: loki
+    enabled: true
+    state: started
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Loki to become ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ loki_port }}/ready"
+    status_code: [200]
+  register: _lokiready
+  retries: 20
+  delay: 5
+  until: _lokiready.status | default(0) == 200
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "Loki ready on :{{ loki_port }}, retention {{ loki_retention }}"
