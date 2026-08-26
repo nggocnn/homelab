@@ -317,8 +317,11 @@ stack** — see [Capacity budget](#capacity-budget). Kubernetes nodes are VMs, n
       corosync ring. **Until this exists, PVE HA fencing stays OFF** — see below.
 - [ ] External NAS for backups.
 - [ ] UPS + NUT.
-- [ ] Restore drill: rebuild a guest from PBS into the `.200–.249` block and verify it.
-      Backups you have never restored are a hypothesis, not a backup.
+- [x] **Restore drill passed.** CT 104 restored from PBS into the spare range,
+      booted, and served DNS with its gravity database intact (81,395 domains).
+      The drill earned its keep: it exposed that `pihole-FTL` came up bound to
+      loopback only, which turned out to affect the *live* container too — see
+      "Lessons from verification" below. Re-run periodically.
 
 ---
 
@@ -450,6 +453,22 @@ experiment layered on top, not a replacement.
 **One tunnel, three replicas.** Cloudflare Tunnel supports up to 25 replicas of a single
 named tunnel sharing one token, with automatic load-balancing and failover. Three
 separate tunnels would mean three ingress configs to keep in sync for no benefit.
+
+---
+
+## Lessons from verification
+
+Things that only surfaced because a step was checked rather than assumed:
+
+- **Pi-hole did not survive a reboot.** `dns.listeningMode = BIND` resolves the
+  interface address at startup, and `pihole-FTL` starts before the network is
+  ready, so after any reboot it bound to loopback only and DNS failed for the
+  whole network — silently, with the service reporting `active`. Fixed with
+  `listeningMode = LOCAL` plus a systemd drop-in ordering FTL after
+  `network-online.target`. AdGuard was checked for the same fault and is immune;
+  it retries the bind.
+- **A backup that writes is not a backup that restores.** The restore drill is
+  the only thing that proved the chain end to end.
 
 ---
 

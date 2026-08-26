@@ -54,6 +54,33 @@
   when: item.stdout | trim | replace(' ', '') != item.item.value | replace(' ', '')
   notify: restart pihole-FTL
 
+# Belt and braces alongside listeningMode=LOCAL: do not even start FTL until
+# the network is actually up.
+- name: Ensure the FTL drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/pihole-FTL.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Order pihole-FTL after the network is online
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pihole-FTL.service.d/10-network.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+  register: _ftlunit
+
+- name: Reload systemd after unit change
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _ftlunit is changed
+
 - name: Configure blocklists
   ansible.builtin.command: >-
     pihole-FTL sqlite3 /etc/pihole/gravity.db
