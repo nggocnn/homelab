@@ -157,6 +157,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/14-pihole.yml         Pi-hole - client-facing resolver
       playbooks/15-pbs.yml            Proxmox Backup Server
       playbooks/16-pbs-access.yml     PBS backup token + TLS fingerprint
+      playbooks/17-tailscale-hosts.yml  Tailscale on the hypervisors (out-of-band)
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf  pbs.tf  backup.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
@@ -196,7 +197,7 @@ installer (Phase 0b) is a later experiment that replaces the manual step for the
       key-only login works. This is the last manual credential step.
 - [x] **Form the cluster**: create it on `pve-01`, then join `pve-02` and `pve-03`
       (`pve`). Node names are immutable after join — confirm `pve-01/02/03` is final.
-- [~] **Tailscale on the hosts** (not just a guest) — `tailscale up` with interactive
+- [x] **Tailscale on the hosts** (not just a guest) — `tailscale up` with interactive
       login. This is the out-of-band path that makes the Phase 2 firewall work safe.
 - [ ] **Cloudflare Tunnel**: create **one named tunnel** and its token in the
       Cloudflare dashboard. Three cloudflared instances will run as *replicas of that

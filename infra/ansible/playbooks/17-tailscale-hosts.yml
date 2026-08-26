@@ -1,0 +1,18 @@
+---
+# Tailscale on the hypervisors themselves.
+#
+# This is the out-of-band path: a Tailscale container lives on vmbr0 and
+# disappears along with the very networking a firewall mistake would cut off.
+# Only an agent on the host survives that, which is why the firewall work in
+# Phase 2 should not start until this is up.
+#
+# Install only without a key; supply one to log in:
+#   ansible-playbook playbooks/17-tailscale-hosts.yml -e tailscale_auth_key=tskey-auth-...
+- name: Install Tailscale on the Proxmox hosts
+  hosts: pve
+  gather_facts: true
+  serial: 1
+  vars:
+    tailscale_advertise_routes: ""
+  roles:
+    - tailscale
