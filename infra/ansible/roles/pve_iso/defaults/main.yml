@@ -1,0 +1,15 @@
+---
+pve_iso_version: "9.2-1"
+pve_iso_url: "https://enterprise.proxmox.com/iso/proxmox-ve_9.2-1.iso"
+pve_iso_workdir: /root/pve-autoinstall
+pve_iso_output_dir: /var/lib/vz/template/iso
+
+# Matches what the cluster actually runs today. Changing this means a rebuild
+# with different storage, not an in-place migration.
+pve_install_filesystem: "ext4"
+pve_install_disk: "nvme0n1"
+
+pve_install_country: "vn"
+pve_install_keyboard: "en-us"
+pve_install_timezone: "Asia/Ho_Chi_Minh"
+pve_install_mailto: "legion.ngqx@gmail.com"

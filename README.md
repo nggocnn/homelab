@@ -150,6 +150,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/01-cluster.yml        cluster formation - guarded, no-op once formed
       playbooks/02-access.yml         automation SSH user + PVE API token
       playbooks/03-guests.yml         guest config the API token may not do
+      playbooks/04-build-install-iso.yml  unattended-install ISOs (Phase 0b)
       playbooks/10-guest-base.yml     update/upgrade + curl in every container
       playbooks/11-cloudflared.yml    cloudflared from Cloudflare's apt repo
       playbooks/12-tailscale.yml      tailscale subnet router (needs auth key)
@@ -183,6 +184,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
     secrets/grafana.sops.yaml         Grafana admin credentials
     secrets/forgejo.sops.yaml         Forgejo admin credentials
     secrets/pki.sops.yaml             internal CA key + wildcard certificate
+    secrets/bootstrap.sops.yaml       install-time root password
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -222,20 +224,29 @@ installer (Phase 0b) is a later experiment that replaces the manual step for the
       Cloudflare dashboard. Three cloudflared instances will run as *replicas of that
       one tunnel*, not three separate tunnels.
 
-### Phase 0b — Unattended install *(experiment, for the next rebuild)*
+### Phase 0b — Unattended install
 
-Not needed now that the nodes are installed, but this is what makes "rebuild from
-this repo" literally true. Build it once and the next reinstall is a USB boot.
+This is what makes "rebuild from this repo" true for the OS layer too. Build the
+ISOs with `playbooks/04-build-install-iso.yml`, write one to a USB stick per
+node, and the node installs itself with the right hostname, address, disk layout
+and SSH key — then applies the NIC workaround before anything else runs.
 
-- [ ] Write `infra/bootstrap/answer-pve-0{1,2,3}.toml` (TOML: keyboard, country, fqdn,
-      timezone, hashed root password, SSH keys, static `network`, `disk-setup`).
-      Use `filesystem = "ext4"` to reproduce the current layout.
-- [ ] Add a `[first-boot]` hook script (PVE 8.3+) to carry the I219-LM fix, the
-      `/etc/hosts` entry and chrony, so a fresh node is correct from its first boot.
-- [ ] `proxmox-auto-install-assistant validate-answer` in CI on every change.
-- [ ] `prepare-iso --fetch-from iso --on-first-boot ...` to produce three bootable ISOs.
-- [ ] Point `dns =` at the **gateway `.1`**, never at a guest resolver — the nodes must
-      resolve before any guest exists.
+**Untested against real hardware.** The ISOs are verified by `inspect-iso`, not
+by an actual install; the next genuine rebuild is the first real test.
+
+- [x] Answer files are templated per node by `roles/pve_iso` from inventory, so
+      addresses and hostnames cannot drift from the rest of the repo. The NIC is
+      matched by **MAC**, not device name — picking the wrong interface on a
+      machine with a spare leaves the node unreachable.
+- [x] `[first-boot]` hook applies the I219-LM offload/EEE workaround and fixes
+      the apt repos before anything else runs. Deliberately minimal — it exists
+      to make the node reachable for Ansible, not to configure it.
+- [x] Every answer file is validated during the build. A malformed one would
+      otherwise surface at install time, in front of a machine with no OS.
+- [x] Three bootable ISOs in `local:iso` on pve-01, verified with
+      `inspect-iso`: correct FQDN, address, disk layout and MAC filter each.
+- [x] `dns` points at the gateway `.1`, never at Pi-hole — a node must resolve
+      during a rebuild from bare metal, before any guest exists.
 
 ### Phase 1 — Automation groundwork
 

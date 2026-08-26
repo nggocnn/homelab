@@ -1,0 +1,37 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+# Unattended install answer file for {{ item }}.
+#
+# Validate:  proxmox-auto-install-assistant validate-answer answer-{{ item }}.toml
+# Build ISO: proxmox-auto-install-assistant prepare-iso ... --fetch-from iso
+
+[global]
+keyboard = "{{ pve_install_keyboard }}"
+country = "{{ pve_install_country }}"
+fqdn = "{{ item }}.{{ pve_domain }}"
+mailto = "{{ pve_install_mailto }}"
+timezone = "{{ pve_install_timezone }}"
+root-password-hashed = "{{ install_root_password_hashed }}"
+root-ssh-keys = ["{{ lookup('file', '~/.ssh/pve.nggocnn.io.pub') | trim }}"]
+# Stop on error rather than rebooting into a half-installed system, which is
+# far harder to diagnose than a stalled installer.
+reboot-on-error = false
+
+[network]
+source = "from-answer"
+cidr = "{{ hostvars[item].ansible_host }}/24"
+gateway = "{{ pve_gateway }}"
+# The gateway, NOT the Pi-hole at .104: a node must be able to resolve before
+# any guest exists, including during a rebuild from bare metal.
+dns = "{{ pve_gateway }}"
+# Match the interface by MAC. Device names are not stable, and picking the
+# wrong NIC on a machine with a spare leaves the node unreachable.
+filter.ID_NET_NAME_MAC = "*{{ pve_nic_macs[item] | replace(':', '') | lower }}"
+
+[disk-setup]
+filesystem = "{{ pve_install_filesystem }}"
+disk-list = ["{{ pve_install_disk }}"]
+
+[first-boot]
+source = "from-iso"
+# After networking is up, so the hook can reach apt if it ever needs to.
+ordering = "network-online"

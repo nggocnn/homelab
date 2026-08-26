@@ -1,0 +1,25 @@
+---
+# Phase 0b - build unattended-install ISOs, one per node.
+#
+# Built on pve-01 because the assistant is packaged for Proxmox and the ISO is
+# large; the results land on `local` storage, downloadable from the web UI or
+# with scp.
+#
+# This is what makes "rebuild from this repo" true for the OS layer as well:
+# boot the matching ISO and the node installs itself with the right hostname,
+# address, disk layout and SSH key, then applies the NIC workaround before
+# anything else runs.
+#
+#   ansible-playbook playbooks/04-build-install-iso.yml
+- name: Build unattended install ISOs
+  hosts: pve_primary
+  gather_facts: false
+  vars:
+    _bs: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/bootstrap.sops.yaml') | from_yaml }}"
+    install_root_password_hashed: "{{ _bs.install_root_password_hashed }}"
+    pve_nic_macs:
+      pve-01: "98:fa:9b:a2:db:4f"
+      pve-02: "98:fa:9b:a4:52:74"
+      pve-03: "98:fa:9b:b0:e1:d1"
+  roles:
+    - pve_iso
