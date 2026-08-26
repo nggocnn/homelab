@@ -1,0 +1,9 @@
+---
+# ntfy: the notification sink Alertmanager posts to.
+#
+#   ansible-playbook playbooks/24-ntfy.yml
+- name: Install ntfy
+  hosts: svc-core
+  gather_facts: true
+  roles:
+    - ntfy

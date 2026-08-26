@@ -1,0 +1,16 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+base-url: "{{ ntfy_base_url }}"
+listen-http: ":{{ ntfy_port }}"
+
+# Messages are transient alerts, not history worth keeping. Cache on disk so a
+# restart does not drop anything in flight.
+cache-file: /var/cache/ntfy/cache.db
+cache-duration: "24h"
+attachment-cache-dir: /var/cache/ntfy/attachments
+
+auth-file: /var/lib/ntfy/user.db
+auth-default-access: "{{ ntfy_auth_default_access }}"
+
+behind-proxy: false
+enable-signup: false
+enable-login: true

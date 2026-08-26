@@ -1,0 +1,143 @@
+---
+- name: Remove the Debian ntfy package
+  ansible.builtin.apt:
+    name: ntfy
+    state: absent
+    purge: false
+
+- name: Create the ntfy service account
+  ansible.builtin.user:
+    name: ntfy
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/ntfy
+    create_home: false
+
+- name: Download the ntfy release
+  ansible.builtin.get_url:
+    url: "https://github.com/binwiederhier/ntfy/releases/download/v{{ ntfy_version }}/ntfy_{{ ntfy_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/ntfy_{{ ntfy_version }}.tar.gz"
+    checksum: "sha256:{{ ntfy_sha256 }}"
+    mode: "0644"
+
+- name: Check the installed version
+  ansible.builtin.command: /usr/local/bin/ntfy --version
+  register: _ntfyver
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Unpack ntfy
+  ansible.builtin.unarchive:
+    src: "/tmp/ntfy_{{ ntfy_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+      - "ntfy_{{ ntfy_version }}_linux_amd64/ntfy"
+    owner: root
+    group: root
+    mode: "0755"
+  when: ntfy_version not in (_ntfyver.stdout | default(''))
+  notify: restart ntfy
+
+- name: Install the ntfy systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ntfy.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note | default('Managed by Ansible') }}
+      [Unit]
+      Description=ntfy server
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User=ntfy
+      Group=ntfy
+      ExecStart=/usr/local/bin/ntfy serve --config /etc/ntfy/server.yml
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - reload systemd for ntfy
+    - restart ntfy
+
+- name: Ensure the config directory exists
+  ansible.builtin.file:
+    path: /etc/ntfy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The Debian package creates neither of these, and ntfy exits with a bare
+# "unable to open database file" rather than naming the directory.
+#
+# recurse: files created under Debian's packaging belong to its `_ntfy` user,
+# and sqlite reports the mismatch as "attempt to write a readonly database"
+# rather than a permission error.
+- name: Create ntfy state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: ntfy
+    group: ntfy
+    mode: "0750"
+    recurse: true
+  loop:
+    - /var/cache/ntfy
+    - /var/lib/ntfy
+  # A running ntfy holds the old file handle, so fixing ownership underneath it
+  # is not enough on its own.
+  notify: restart ntfy
+
+- name: Configure ntfy
+  ansible.builtin.template:
+    src: server.yml.j2
+    dest: /etc/ntfy/server.yml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart ntfy
+
+# daemon_reload here as well as via the handler: removing the Debian package
+# and dropping in our own unit in the same run leaves systemd holding a stale
+# reference, and the service task would otherwise fail with EBUSY.
+- name: Ensure ntfy is enabled and running
+  ansible.builtin.systemd_service:
+    name: ntfy
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for ntfy to answer
+  ansible.builtin.uri:
+    url: "{{ ntfy_base_url }}/v1/health"
+    return_content: true
+  register: _ntfyhealth
+  retries: 12
+  delay: 4
+  until: _ntfyhealth.status | default(0) == 200
+
+- name: Publish a test message
+  ansible.builtin.uri:
+    url: "{{ ntfy_base_url }}/{{ ntfy_alert_topic }}"
+    method: POST
+    body: "ntfy provisioned by Ansible on {{ ansible_date_time.iso8601 }}"
+    headers:
+      Title: "homelab"
+      Tags: "white_check_mark"
+    status_code: 200
+  register: _ntfytest
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "ntfy healthy ({{ _ntfyhealth.json.healthy }}), test message id {{ _ntfytest.json.id }}"
