@@ -20,8 +20,13 @@ pihole_managed_settings:
     value: "[ {{ pihole_upstreams | join(', ') }} ]"
   - key: dns.interface
     value: "{{ pihole_interface }}"
+  # LOCAL, not BIND. BIND resolves the interface address at startup, and FTL
+  # starts before the network is ready -- after a reboot it binds to loopback
+  # only and DNS silently fails for the whole network. LOCAL listens on all
+  # interfaces but answers only queries from local subnets, so there is no
+  # startup race to lose.
   - key: dns.listeningMode
-    value: "BIND"
+    value: "LOCAL"
   # FTL's NTP client cannot set the clock in an unprivileged container and logs
   # an error every 10 minutes trying. The host keeps time via chrony.
   - key: ntp.sync.active
