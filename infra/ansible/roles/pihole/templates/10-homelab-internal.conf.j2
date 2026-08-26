@@ -1,0 +1,10 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+# Internal *.nggocnn.io names. Service names resolve to Traefik; node names
+# resolve to the nodes themselves so SSH and cluster traffic are unaffected.
+{% for h in groups['pve'] %}
+host-record={{ h }}.{{ pve_domain }},{{ hostvars[h].ansible_host }}
+{% endfor %}
+{% for s in traefik_services %}
+host-record={{ s.name }}.{{ pve_domain }},{{ traefik_address }}
+{% endfor %}
+host-record=traefik.{{ pve_domain }},{{ traefik_address }}

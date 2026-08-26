@@ -1,0 +1,7 @@
+---
+traefik_dir: /opt/traefik
+traefik_image: "traefik:v3.6"
+traefik_domain: "nggocnn.io"
+
+# Internal services Traefik fronts. Each becomes <name>.nggocnn.io.
+# Kept as data so adding a service is one line, not a new config block.

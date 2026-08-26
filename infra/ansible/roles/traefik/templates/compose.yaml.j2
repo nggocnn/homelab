@@ -1,0 +1,13 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+services:
+  traefik:
+    image: {{ traefik_image }}
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - {{ traefik_dir }}/traefik.yml:/etc/traefik/traefik.yml:ro
+      - {{ traefik_dir }}/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - {{ traefik_dir }}/certs:/etc/traefik/certs:ro
