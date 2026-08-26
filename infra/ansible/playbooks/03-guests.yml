@@ -35,3 +35,28 @@
       delay: 3
       changed_when: false
       check_mode: false
+
+# Cloud-init user-data is delivered as a snippet file, which requires the
+# 'snippets' content type on a storage. storage.cfg is cluster-wide, so this
+# runs once on the primary. OpenTofu cannot do it: Datastore.Allocate covers
+# creating storages, not editing their content types.
+- name: Enable snippets on local storage
+  hosts: pve_primary
+  gather_facts: false
+  tasks:
+    - name: Read current content types for local
+      ansible.builtin.command: pvesh get /storage/local --output-format json
+      register: _localstore
+      changed_when: false
+      check_mode: false
+
+    - name: Add snippets to local storage content types
+      ansible.builtin.command: pvesm set local --content iso,vztmpl,backup,import,snippets
+      when: "'snippets' not in (_localstore.stdout | from_json).content"
+
+    - name: Confirm snippets is enabled
+      ansible.builtin.command: pvesh get /storage/local --output-format json
+      register: _after
+      changed_when: false
+      check_mode: false
+      failed_when: "'snippets' not in (_after.stdout | from_json).content"

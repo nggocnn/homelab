@@ -1,0 +1,13 @@
+#cloud-config
+# Baked into the Debian template so every clone has these from first boot.
+package_update: true
+package_upgrade: false
+
+packages:
+  # Without this the host cannot fsfreeze the guest, so vzdump backups are
+  # crash-consistent rather than filesystem-consistent. Debian's genericcloud
+  # image does not include it.
+  - qemu-guest-agent
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
