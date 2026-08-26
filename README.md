@@ -162,9 +162,10 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/21-prometheus.yml     Prometheus + Alertmanager + alert rules
       playbooks/22-pve-exporter.yml   pve-exporter (read-only PVEAuditor token)
       playbooks/23-grafana.yml        Grafana + provisioned datasource/dashboard
+      playbooks/24-ntfy.yml           ntfy notification sink (Alertmanager target)
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
-      pbs.tf  backup.tf  monitoring.tf
+      pbs.tf  backup.tf  monitoring.tf  svc-core.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
@@ -266,11 +267,11 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 - [ ] **svc-core LXC** with **Traefik** reverse proxy on the wildcard cert.
 - [ ] **Keycloak** for SSO, then wire it as the Proxmox **OIDC** realm. `root@pam`
       remains and is verified working after every OIDC change.
-- [~] **Monitoring stack**: Prometheus, Alertmanager and Grafana are up, with
-      `node_exporter` and `pve-exporter` feeding them and a provisioned
-      "Homelab overview" dashboard. **Alertmanager has no receiver yet**, so
-      alerts currently fire into a void — wiring it to ntfy + Telegram is the
-      next step. Loki and Uptime Kuma still to come.
+- [~] **Monitoring stack**: Prometheus, Alertmanager, Grafana and ntfy are up,
+      with `node_exporter` and `pve-exporter` feeding them and a provisioned
+      "Homelab overview" dashboard. Alert delivery verified end to end
+      (Alertmanager → ntfy, rendered readable). Telegram still to add (needs a
+      bot token); Loki and Uptime Kuma still to come.
 - [x] **Host sensors**: node_exporter with `hwmon` + `rapl` collectors on all three
       nodes. RAPL energy counters are root-only since the PLATYPUS mitigation, so
       `rapl-perms.service` grants the `prometheus` group read access — without it
@@ -493,6 +494,11 @@ Things that only surfaced because a step was checked rather than assumed:
   nodes therefore triples each series, and an alert written naively fires three
   times for one condition. Storage and guest alerts aggregate with
   `max by (id)`.
+- **Debian's ntfy is too old to render alerts.** trixie ships 2.11.0, which
+  predates message templating, so an Alertmanager webhook arrives as a raw JSON
+  blob. Pinned to the upstream 2.27.0 binary with a checksum instead —
+  unreadable notifications are notifications you learn to ignore. The trade-off
+  is no apt security updates for ntfy; bump the pin deliberately.
 - **VM templates are guests that never run**, so a naive `GuestStopped` alert
   fires on them forever. Excluded by joining against `pve_guest_info`'s
   `template` label rather than guessing at VMID ranges.

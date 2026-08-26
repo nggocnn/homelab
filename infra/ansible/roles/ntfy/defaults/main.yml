@@ -1,0 +1,20 @@
+---
+# Upstream binary rather than Debian's package: trixie ships 2.11.0, which
+# predates message templating. Without it Alertmanager's webhook arrives as a
+# raw JSON blob instead of a readable alert - and unreadable notifications are
+# notifications you learn to ignore.
+#
+# Trade-off: no apt security updates for ntfy. Bump this pin deliberately;
+# Renovate can watch it once Phase 5 lands.
+ntfy_version: "2.27.0"
+ntfy_sha256: "4b7220cb0e7673a66ace8e1368573c0df89888aafde6860ae3a48ae1174c8cee"
+ntfy_port: 8080
+ntfy_base_url: "http://10.10.10.141:8080"
+ntfy_alert_topic: "homelab-alerts"
+# Port 8080, not 80: Debian ships the unit with AmbientCapabilities commented
+# out, so ntfy (running as _ntfy) cannot bind a privileged port. Traefik will
+# front this in Phase 3 anyway.
+#
+# LAN-only for now: no auth, but nothing outside 10.10.10.0/24 can reach it.
+# Revisit when this is published through Traefik or the tunnel.
+ntfy_auth_default_access: "read-write"

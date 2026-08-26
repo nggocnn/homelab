@@ -34,6 +34,16 @@
     validate: "promtool check rules %s"
   notify: restart prometheus
 
+- name: Write the Alertmanager configuration
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: /etc/prometheus/alertmanager.yml
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "amtool check-config %s"
+  notify: restart alertmanager
+
 - name: Ensure Prometheus and Alertmanager are running
   ansible.builtin.service:
     name: "{{ item }}"
@@ -64,6 +74,21 @@
   delay: 6
   until: >-
     (_targets.json.data.activeTargets | selectattr('health', 'ne', 'up') | list | length) == 0
+
+- name: Confirm Alertmanager has the ntfy receiver loaded
+  ansible.builtin.uri:
+    url: "http://localhost:{{ alertmanager_port }}/api/v2/status"
+    return_content: true
+  register: _amstatus
+  retries: 8
+  delay: 3
+  until: _amstatus.status | default(0) == 200
+
+- name: Assert the receiver is configured
+  ansible.builtin.assert:
+    that: "'ntfy' in _amstatus.json.config.original"
+    fail_msg: "Alertmanager is running but has no ntfy receiver - alerts would fire into a void"
+    quiet: true
 
 - name: Report target health
   ansible.builtin.debug:
