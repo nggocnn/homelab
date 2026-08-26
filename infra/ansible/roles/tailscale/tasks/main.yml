@@ -71,7 +71,23 @@
   failed_when: false
   check_mode: false
 
-- name: Bring Tailscale up as a subnet router
+- name: Read current Tailscale preferences
+  ansible.builtin.command: tailscale debug prefs
+  register: _tsprefs
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Determine what needs doing
+  ansible.builtin.set_fact:
+    _ts_running: "{{ (_tsstatus.stdout | from_json).BackendState | default('') == 'Running' }}"
+    _ts_routes_ok: >-
+      {{ (_tsprefs.stdout | from_json).AdvertiseRoutes | default([]) | sort
+         == tailscale_advertise_routes.split(',') | map('trim') | sort }}
+
+# First login. Needs an auth key; without one the node is left logged out and
+# the operator finishes it by hand.
+- name: Log in and bring Tailscale up as a subnet router
   ansible.builtin.command: >-
     tailscale up
     --authkey {{ tailscale_auth_key }}
@@ -79,9 +95,18 @@
     --accept-dns=false
     --hostname {{ inventory_hostname }}
   when:
+    - not _ts_running
     - tailscale_auth_key | default('') | length > 0
-    - (_tsstatus.stdout | from_json).BackendState | default('') != 'Running'
   no_log: true
+
+# Already logged in, but the advertised routes have drifted from what this repo
+# says they should be. `set` reconciles them without re-authenticating.
+- name: Reconcile advertised routes
+  ansible.builtin.command: >-
+    tailscale set --advertise-routes {{ tailscale_advertise_routes }} --accept-dns=false
+  when:
+    - _ts_running
+    - not _ts_routes_ok
 
 - name: Report Tailscale state
   ansible.builtin.command: tailscale status

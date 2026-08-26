@@ -190,7 +190,7 @@ installer (Phase 0b) is a later experiment that replaces the manual step for the
       key-only login works. This is the last manual credential step.
 - [x] **Form the cluster**: create it on `pve-01`, then join `pve-02` and `pve-03`
       (`pve`). Node names are immutable after join — confirm `pve-01/02/03` is final.
-- [ ] **Tailscale on the hosts** (not just a guest) — `tailscale up` with interactive
+- [~] **Tailscale on the hosts** (not just a guest) — `tailscale up` with interactive
       login. This is the out-of-band path that makes the Phase 2 firewall work safe.
 - [ ] **Cloudflare Tunnel**: create **one named tunnel** and its token in the
       Cloudflare dashboard. Three cloudflared instances will run as *replicas of that
