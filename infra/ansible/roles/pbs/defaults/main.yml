@@ -1,0 +1,12 @@
+---
+pbs_datastore_name: "backups"
+pbs_datastore_path: "/mnt/datastore/backups"
+# The datastore disk is DETECTED, not named: Linux device order is not stable,
+# and on this VM the 120 GB datastore disk came up as sda while the 16 GB root
+# disk was sdb. Hardcoding a name risks formatting the wrong disk.
+
+# Backups are the only recovery path in this cluster (no ZFS replication), so
+# retention is deliberately generous relative to the 120 GB datastore.
+pbs_keep_daily: 7
+pbs_keep_weekly: 4
+pbs_keep_monthly: 3

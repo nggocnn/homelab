@@ -155,8 +155,9 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/12-tailscale.yml      tailscale subnet router (needs auth key)
       playbooks/13-adguard.yml        AdGuard Home - upstream resolver
       playbooks/14-pihole.yml         Pi-hole - client-facing resolver
+      playbooks/15-pbs.yml            Proxmox Backup Server
     infra/opentofu/
-      pools.tf  templates.tf  containers.tf  vm-template.tf
+      pools.tf  templates.tf  containers.tf  vm-template.tf  pbs.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
