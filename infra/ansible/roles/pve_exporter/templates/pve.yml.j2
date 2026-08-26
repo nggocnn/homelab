@@ -1,0 +1,8 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+default:
+  user: {{ pve_monitor_user }}
+  token_name: {{ pve_monitor_token_name }}
+  token_value: {{ pve_monitor_token_secret }}
+  # PVE uses a self-signed certificate by default. Once ACME certs land in
+  # Phase 2 this should become true.
+  verify_ssl: false

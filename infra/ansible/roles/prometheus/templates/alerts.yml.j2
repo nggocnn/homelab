@@ -42,3 +42,43 @@ groups:
         annotations:
           summary: "{{ '{{ $labels.collector }}' }} collector failing on {{ '{{ $labels.instance }}' }}"
           description: "These collectors report success=0 rather than erroring, so without this alert they fail silently."
+
+  - name: proxmox
+    rules:
+      # Every pve target returns CLUSTER-WIDE storage, so each series appears
+      # once per scraped node. Aggregating by `id` collapses the duplicates -
+      # without it these alerts fire three times for one condition.
+      # The LVM-thin failure mode: an overcommitted pool can fill while guests
+      # still believe they have space, and every guest on it goes read-only
+      # together. This is the alert that matters most on this cluster.
+      - alert: ThinPoolFilling
+        expr: >-
+          max by (id) (pve_disk_usage_bytes{id=~"storage/.*/local-lvm"})
+          / max by (id) (pve_disk_size_bytes{id=~"storage/.*/local-lvm"}) > 0.8
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ '{{ $labels.id }}' }} is {{ '{{ $value | humanizePercentage }}' }} full"
+          description: "A full thin pool takes every guest on it down at once. There is no replication - recovery is a PBS restore."
+
+      - alert: PBSDatastoreFilling
+        expr: >-
+          max by (id) (pve_disk_usage_bytes{id=~"storage/.*/pbs"})
+          / max by (id) (pve_disk_size_bytes{id=~"storage/.*/pbs"}) > 0.85
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "PBS datastore {{ '{{ $value | humanizePercentage }}' }} full"
+          description: "Backups are the only recovery path here. A full datastore means new backups silently stop."
+
+      # Templates are guests that are never running, so they would otherwise
+      # alert forever. Excluded by joining against pve_guest_info's template
+      # label rather than by guessing at VMID ranges.
+      - alert: GuestStopped
+        expr: >-
+          max by (id) (pve_up{id=~"(qemu|lxc)/.*"}) == 0
+          unless on (id) max by (id) (pve_guest_info{template="1"})
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Guest {{ '{{ $labels.id }}' }} is not running"

@@ -1,0 +1,74 @@
+---
+- name: Install python venv tooling
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-pip
+    state: present
+
+- name: Create the pve-exporter service account
+  ansible.builtin.user:
+    name: pve-exporter
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ pve_exporter_venv }}"
+    create_home: false
+
+# Not packaged in Debian, so a venv rather than pip into the system python.
+- name: Create the virtualenv
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ pve_exporter_venv }}
+    creates: "{{ pve_exporter_venv }}/bin/python"
+
+- name: Install prometheus-pve-exporter
+  ansible.builtin.pip:
+    name: prometheus-pve-exporter
+    state: present
+    virtualenv: "{{ pve_exporter_venv }}"
+  register: _pipinstall
+
+- name: Write the exporter credentials
+  ansible.builtin.template:
+    src: pve.yml.j2
+    dest: /etc/prometheus/pve.yml
+    owner: pve-exporter
+    group: pve-exporter
+    mode: "0400"
+  no_log: true
+  notify: restart pve-exporter
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: pve-exporter.service.j2
+    dest: /etc/systemd/system/pve-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd for pve-exporter
+    - restart pve-exporter
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure pve-exporter is enabled and running
+  ansible.builtin.systemd_service:
+    name: pve-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Verify the exporter returns cluster metrics
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pve_exporter_port }}/pve?target={{ pve_exporter_targets[0] }}"
+    return_content: true
+  register: _pvemetrics
+  retries: 8
+  delay: 4
+  until: _pvemetrics.status | default(0) == 200
+
+- name: Confirm storage metrics are present
+  ansible.builtin.assert:
+    that: "'pve_disk_usage_bytes' in _pvemetrics.content"
+    fail_msg: "pve-exporter answered but returned no storage metrics - check the token's PVEAuditor grant"
+    quiet: true

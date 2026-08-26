@@ -1,0 +1,15 @@
+---
+# pve-exporter: cluster, node, guest and storage metrics from the PVE API.
+# This is what supplies the local-lvm thin-pool usage the plan calls for.
+#
+#   ansible-playbook playbooks/22-pve-exporter.yml
+- name: Install pve-exporter
+  hosts: monitoring
+  gather_facts: true
+  vars:
+    _mon: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/monitoring.sops.yaml') | from_yaml }}"
+    pve_monitor_user: "{{ _mon.pve_monitor_user }}"
+    pve_monitor_token_name: "{{ _mon.pve_monitor_token_name }}"
+    pve_monitor_token_secret: "{{ _mon.pve_monitor_token_secret }}"
+  roles:
+    - pve_exporter

@@ -117,3 +117,60 @@
           {{ 'Token created and staged for encryption.'
              if _newtoken is not skipped
              else 'Token already exists - secrets/ left untouched.' }}
+
+# Read-only identity for pve-exporter. PVEAuditor is a built-in role: it can
+# read cluster, node, guest and storage state and nothing else, which is
+# exactly what a metrics exporter should be able to do.
+- name: PVE monitoring identity
+  hosts: pve_primary
+  gather_facts: false
+  vars:
+    pve_monitor_user: "monitoring@pve"
+    pve_monitor_token: "exporter"
+  tasks:
+    - name: Create the monitoring user
+      ansible.builtin.shell: |
+        pveum user list --output-format json | grep -q '"userid":"{{ pve_monitor_user }}"' \
+          || { pveum user add {{ pve_monitor_user }} --comment "Read-only metrics exporter"; echo created; }
+      args:
+        executable: /bin/bash
+      register: _monuser
+      changed_when: _monuser.stdout is search('created')
+
+    - name: Grant PVEAuditor at the datacenter root
+      ansible.builtin.command: >-
+        pveum acl modify / --users {{ pve_monitor_user }} --roles PVEAuditor
+      changed_when: true
+
+    - name: Check for an existing monitoring token
+      ansible.builtin.command: pveum user token list {{ pve_monitor_user }} --output-format json
+      register: _montokens
+      changed_when: false
+      check_mode: false
+
+    - name: Create the monitoring token
+      ansible.builtin.command: >-
+        pveum user token add {{ pve_monitor_user }} {{ pve_monitor_token }}
+        --privsep 0 --output-format json
+      register: _newmontoken
+      no_log: true
+      when: pve_monitor_token not in (_montokens.stdout | from_json | map(attribute='tokenid') | list)
+
+    - name: Stage the monitoring token for encryption
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../../secrets/.monitoring.plain.yaml"
+        mode: "0600"
+        content: |
+          pve_monitor_user: "{{ pve_monitor_user }}"
+          pve_monitor_token_name: "{{ pve_monitor_token }}"
+          pve_monitor_token_secret: "{{ (_newmontoken.stdout | from_json).value }}"
+      delegate_to: localhost
+      no_log: true
+      when: _newmontoken is not skipped
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Monitoring token created and staged.'
+             if _newmontoken is not skipped
+             else 'Monitoring token already exists.' }}

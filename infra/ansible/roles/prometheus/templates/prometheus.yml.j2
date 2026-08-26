@@ -27,3 +27,22 @@ scrape_configs:
         regex: "([^:]+):.*"
         target_label: instance
         replacement: "$1"
+
+  # pve-exporter is queried once per node, passing the node as a target - the
+  # exporter proxies to that node's API rather than being scraped directly.
+  - job_name: pve
+    metrics_path: /pve
+    params:
+      module: [default]
+    static_configs:
+      - targets:
+{% for t in pve_exporter_targets %}
+          - "{{ t }}"
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "127.0.0.1:{{ pve_exporter_port }}"
