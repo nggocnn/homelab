@@ -161,6 +161,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/20-node-exporter.yml  node_exporter + hwmon/rapl sensors
       playbooks/21-prometheus.yml     Prometheus + Alertmanager + alert rules
       playbooks/22-pve-exporter.yml   pve-exporter (read-only PVEAuditor token)
+      playbooks/23-grafana.yml        Grafana + provisioned datasource/dashboard
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
       pbs.tf  backup.tf  monitoring.tf
@@ -169,6 +170,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
     secrets/pbs.sops.yaml             PBS token + TLS fingerprint
     secrets/monitoring.sops.yaml      read-only PVE token for pve-exporter
+    secrets/grafana.sops.yaml         Grafana admin credentials
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -264,8 +266,11 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 - [ ] **svc-core LXC** with **Traefik** reverse proxy on the wildcard cert.
 - [ ] **Keycloak** for SSO, then wire it as the Proxmox **OIDC** realm. `root@pam`
       remains and is verified working after every OIDC change.
-- [ ] **Monitoring stack**: Prometheus, Grafana, Loki, Alertmanager; Uptime Kuma;
-      alerts → **ntfy + Telegram bot**.
+- [~] **Monitoring stack**: Prometheus, Alertmanager and Grafana are up, with
+      `node_exporter` and `pve-exporter` feeding them and a provisioned
+      "Homelab overview" dashboard. **Alertmanager has no receiver yet**, so
+      alerts currently fire into a void — wiring it to ntfy + Telegram is the
+      next step. Loki and Uptime Kuma still to come.
 - [x] **Host sensors**: node_exporter with `hwmon` + `rapl` collectors on all three
       nodes. RAPL energy counters are root-only since the PLATYPUS mitigation, so
       `rapl-perms.service` grants the `prometheus` group read access — without it

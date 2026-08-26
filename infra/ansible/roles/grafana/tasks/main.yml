@@ -1,0 +1,117 @@
+---
+- name: Install the Grafana signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+
+- name: Configure Grafana
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: grafana
+    mode: "0640"
+  no_log: true
+  notify: restart grafana
+
+- name: Ensure provisioning directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: grafana
+    mode: "0750"
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - /var/lib/grafana/dashboards
+
+- name: Provision the Prometheus datasource
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Provision the dashboard provider
+  ansible.builtin.template:
+    src: dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/homelab.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Install dashboards
+  ansible.builtin.copy:
+    src: homelab-overview.json
+    dest: /var/lib/grafana/dashboards/homelab-overview.json
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Ensure Grafana is enabled and running
+  ansible.builtin.service:
+    name: grafana-server
+    enabled: true
+    state: started
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Grafana to answer
+  ansible.builtin.uri:
+    url: "http://{{ grafana_bind }}:{{ grafana_port }}/api/health"
+    return_content: true
+  register: _gfhealth
+  retries: 15
+  delay: 4
+  until: _gfhealth.status | default(0) == 200 and (_gfhealth.json.database | default('')) == 'ok'
+
+- name: Confirm the datasource provisioned
+  ansible.builtin.uri:
+    url: "http://{{ grafana_bind }}:{{ grafana_port }}/api/datasources"
+    user: "{{ grafana_admin_user }}"
+    password: "{{ grafana_admin_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: _gfds
+  no_log: true
+
+- name: Confirm the dashboard provisioned
+  ansible.builtin.uri:
+    url: "http://{{ grafana_bind }}:{{ grafana_port }}/api/search?query=Homelab"
+    user: "{{ grafana_admin_user }}"
+    password: "{{ grafana_admin_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: _gfdash
+  no_log: true
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      Grafana {{ _gfhealth.json.version }}:
+      {{ _gfds.json | length }} datasource(s),
+      {{ _gfdash.json | length }} dashboard(s)
