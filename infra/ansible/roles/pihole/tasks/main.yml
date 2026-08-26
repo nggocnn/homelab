@@ -81,6 +81,18 @@
     daemon_reload: true
   when: _ftlunit is changed
 
+# Internal name resolution. Pi-hole answers authoritatively for nggocnn.io,
+# which is deliberate: the domain is not registered publicly, so nothing else
+# can answer for it.
+- name: Publish internal DNS records
+  ansible.builtin.template:
+    src: 10-homelab-internal.conf.j2
+    dest: /etc/dnsmasq.d/10-homelab-internal.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart pihole-FTL
+
 - name: Configure blocklists
   ansible.builtin.command: >-
     pihole-FTL sqlite3 /etc/pihole/gravity.db

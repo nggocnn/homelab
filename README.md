@@ -168,10 +168,13 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/30-forgejo.yml        Forgejo: git, registry, Actions
       playbooks/31-ci-runner.yml      Forgejo Actions runner (Docker executor)
       playbooks/32-homepage.yml       Homepage dashboard on svc-core
+      playbooks/33-traefik.yml        Traefik + internal-CA wildcard
+    pki/                              internal CA public cert (install on devices)
+    infra/pki/issue-wildcard.sh       reissue the wildcard before it lapses
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
       pbs.tf  backup.tf  monitoring.tf  svc-core.tf
-      forgejo.tf  ci-runner.tf
+      forgejo.tf  ci-runner.tf  kubernetes-lab.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
@@ -179,6 +182,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
     secrets/monitoring.sops.yaml      read-only PVE token for pve-exporter
     secrets/grafana.sops.yaml         Grafana admin credentials
     secrets/forgejo.sops.yaml         Forgejo admin credentials
+    secrets/pki.sops.yaml             internal CA key + wildcard certificate
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -301,8 +305,11 @@ public upstream. HA DNS is explicitly out of scope for now; `.50` stays reserved
       blocklists still apply; only AdGuard's filtering layer is lost. Verified by
       stopping AdGuard and confirming resolution and blocking both continued.
 - [x] Pin Pi-hole and AdGuard to **different physical nodes**.
-- [ ] Internal `*.nggocnn.io` records → Traefik at `.51`; external stays on the
-      Cloudflare tunnel. **DNS must not sit behind Traefik** — that is a dependency cycle.
+- [x] Internal `*.nggocnn.io` records → Traefik at `.141`, served by Pi-hole.
+      Node names (`pve-01.nggocnn.io`) resolve to the nodes themselves so SSH and
+      cluster traffic are unaffected; the Proxmox UIs are reachable as
+      `pve1/2/3.nggocnn.io`. External stays on `*.nggocnn.site` through the
+      Cloudflare tunnel. DNS does not sit behind Traefik — that would be a cycle.
 - [ ] Move Cloudflare tunnel **routes into git** (Terraform Cloudflare provider + file config).
 
 ### Phase 5 — CI/CD & GitOps
@@ -437,6 +444,19 @@ cycle to babysit, and SOPS + age is the right stopping point at this scale.
 
 ## Decisions and rationale
 
+**Two domains, and only one of them is real.** `nggocnn.site` is a registered
+Cloudflare zone and carries all external access through the tunnel.
+`nggocnn.io` is **not registered** — Pi-hole answers for it authoritatively on
+the LAN. That is deliberate but has two consequences worth remembering. First,
+no public CA can ever issue for `*.nggocnn.io`, so internal TLS comes from the
+homelab's own CA (`pki/`) and every device must install that root — Android in
+particular will not trust it for app traffic, only browsers. Second, `.io` is
+registerable by anyone, so a stranger could one day own the name this network
+resolves internally. The alternative — putting internal names on `nggocnn.site`
+with split-horizon DNS and a Let's Encrypt wildcard via DNS-01 — would remove
+both problems and needs no device setup. Worth revisiting before hostnames get
+baked into git remotes, registry paths and OIDC redirect URIs.
+
 **LVM-thin over ZFS.** The nodes were installed with the PVE default (ext4 + LVM-thin)
 and are staying that way. ZFS was seriously considered, because it is the only path to
 `pvesr` replication and would have cut the RPO from the backup interval down to
@@ -511,6 +531,12 @@ Things that only surfaced because a step was checked rather than assumed:
   Generated up front by a script instead, so `app.ini` stays declarative and
   read-only. They must persist: regenerating any of them invalidates every
   session and stored credential.
+- **The plan specified a domain that does not exist.** Everything referenced
+  `*.nggocnn.io` — node FQDNs, internal records, the ACME plan — and it was
+  never checked. `nggocnn.io` is NXDOMAIN; the registered zone is
+  `nggocnn.site`. Caught only when the certificate work forced the question.
+- **Pi-hole v6 ignores `/etc/dnsmasq.d/`** unless `misc.etc_dnsmasq_d` is true.
+  Records written there are silently not served — no error, just NXDOMAIN.
 - **Docker runs fine in an unprivileged LXC** given `nesting=1,keyctl=1`
   (overlayfs storage driver). The CI runner is a separate container from
   Forgejo deliberately: workflows execute arbitrary code and should not share a

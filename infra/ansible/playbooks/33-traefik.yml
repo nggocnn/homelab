@@ -1,0 +1,18 @@
+---
+# Traefik with the internal CA's wildcard certificate.
+#
+# Internal names are *.nggocnn.io, served with a certificate from the homelab's
+# own CA (see pki/README.md). External access stays on *.nggocnn.site through
+# the Cloudflare tunnel, where Cloudflare terminates a public certificate.
+#
+#   ansible-playbook playbooks/33-traefik.yml
+- name: Install Traefik
+  hosts: svc-core
+  gather_facts: true
+  vars:
+    _pki: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/pki.sops.yaml') | from_yaml }}"
+    wildcard_crt: "{{ _pki.wildcard_crt }}"
+    wildcard_key: "{{ _pki.wildcard_key }}"
+  roles:
+    - docker
+    - traefik

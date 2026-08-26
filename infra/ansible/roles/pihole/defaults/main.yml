@@ -35,3 +35,7 @@ pihole_managed_settings:
     value: "false"
   - key: ntp.ipv6.active
     value: "false"
+  # v6 ignores /etc/dnsmasq.d/ unless this is on, so the internal records
+  # written there are silently not served.
+  - key: misc.etc_dnsmasq_d
+    value: "true"

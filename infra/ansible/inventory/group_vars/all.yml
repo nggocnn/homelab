@@ -1,0 +1,33 @@
+---
+# Site-wide facts. These are referenced by hosts and guests alike, so they live
+# here rather than in the pve group.
+
+# Internal domain. Deliberately NOT publicly registered - Pi-hole answers for
+# it authoritatively. External names live on nggocnn.site, which is a real
+# Cloudflare zone; see README.md.
+pve_domain: nggocnn.io
+external_domain: nggocnn.site
+
+pve_subnet_cidr: 10.10.10.0/24
+pve_gateway: 10.10.10.1
+
+# Services Traefik fronts. One list drives both the proxy routes and the
+# internal DNS records, so adding a service is a single line.
+traefik_address: "10.10.10.141"
+traefik_services:
+  - { name: "home",       target: "http://10.10.10.141:3000" }
+  - { name: "ntfy",       target: "http://10.10.10.141:8080" }
+  - { name: "grafana",    target: "http://10.10.10.142:3000" }
+  - { name: "prometheus", target: "http://10.10.10.142:9090" }
+  - { name: "alerts",     target: "http://10.10.10.142:9093" }
+  - { name: "loki",       target: "http://10.10.10.142:3100" }
+  - { name: "forgejo",    target: "http://10.10.10.143:3000" }
+  - { name: "pihole",     target: "http://10.10.10.104" }
+  - { name: "adguard",    target: "http://10.10.10.105:3000" }
+  - { name: "pbs",        target: "https://10.10.10.148:8007" }
+  # Deliberately NOT pve-01.nggocnn.io: that name must keep resolving to the
+  # node itself for SSH and cluster traffic. Routing it at Traefik would break
+  # host access in a confusing way.
+  - { name: "pve1",       target: "https://10.10.10.11:8006" }
+  - { name: "pve2",       target: "https://10.10.10.12:8006" }
+  - { name: "pve3",       target: "https://10.10.10.13:8006" }

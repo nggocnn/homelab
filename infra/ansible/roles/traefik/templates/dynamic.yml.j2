@@ -1,0 +1,43 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/wildcard.crt
+        keyFile: /etc/traefik/certs/wildcard.key
+  certificates:
+    - certFile: /etc/traefik/certs/wildcard.crt
+      keyFile: /etc/traefik/certs/wildcard.key
+
+http:
+  routers:
+{% for s in traefik_services %}
+    {{ s.name }}:
+      rule: "Host(`{{ s.name }}.{{ traefik_domain }}`)"
+      service: {{ s.name }}
+      entryPoints: [websecure]
+      tls: {}
+{% endfor %}
+    dashboard:
+      rule: "Host(`traefik.{{ traefik_domain }}`)"
+      service: api@internal
+      entryPoints: [websecure]
+      tls: {}
+
+  services:
+{% for s in traefik_services %}
+    {{ s.name }}:
+      loadBalancer:
+        servers:
+          - url: "{{ s.target }}"
+{% if s.target.startswith('https') %}
+        serversTransport: insecure
+{% endif %}
+{% endfor %}
+
+  serversTransports:
+    # Proxmox and PBS present their own self-signed certificates on the back
+    # end. Traefik terminates the trusted certificate at the front; verifying
+    # the back end would need their certs in Traefik's trust store too.
+    insecure:
+      insecureSkipVerify: true

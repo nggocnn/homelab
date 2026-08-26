@@ -1,0 +1,64 @@
+---
+- name: Create the Traefik directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ traefik_dir }}"
+    - "{{ traefik_dir }}/certs"
+
+- name: Install the wildcard certificate
+  ansible.builtin.copy:
+    dest: "{{ traefik_dir }}/certs/wildcard.crt"
+    content: "{{ wildcard_crt }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart traefik
+
+- name: Install the wildcard key
+  ansible.builtin.copy:
+    dest: "{{ traefik_dir }}/certs/wildcard.key"
+    content: "{{ wildcard_key }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart traefik
+
+- name: Write the Traefik configuration
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ traefik_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - traefik.yml
+    - dynamic.yml
+    - compose.yaml
+  notify: restart traefik
+
+- name: Start Traefik
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ traefik_dir }}"
+  register: _tfup
+  changed_when: "'Started' in _tfup.stderr or 'Created' in _tfup.stderr"
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Traefik to serve TLS
+  ansible.builtin.command: >-
+    openssl s_client -connect 127.0.0.1:443 -servername home.{{ traefik_domain }}
+  args:
+    stdin: ""
+  register: _tls
+  retries: 15
+  delay: 4
+  until: _tls.rc == 0 and 'nggocnn.io' in _tls.stdout
+  changed_when: false
