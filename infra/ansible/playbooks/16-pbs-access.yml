@@ -1,0 +1,105 @@
+---
+# Create a least-privilege PBS token for the PVE cluster to back up with, and
+# capture the TLS fingerprint the storage definition needs.
+#
+# Run once; re-runs are a no-op. The token value is shown only at creation, so
+# it is staged locally and encrypted with SOPS.
+#
+#   ansible-playbook playbooks/16-pbs-access.yml
+
+- name: PBS backup credentials
+  hosts: pbs
+  gather_facts: false
+  become: true
+  vars:
+    pbs_backup_user: "pve@pbs"
+    pbs_backup_token: "cluster"
+    pbs_datastore_name: "backups"
+  tasks:
+    - name: List existing PBS users
+      ansible.builtin.command: proxmox-backup-manager user list --output-format json
+      register: _users
+      changed_when: false
+      check_mode: false
+
+    - name: Create the backup user
+      ansible.builtin.command: >-
+        proxmox-backup-manager user create {{ pbs_backup_user }}
+        --comment "PVE cluster backup account"
+      when: pbs_backup_user not in (_users.stdout | from_json | map(attribute='userid') | list)
+
+    - name: List existing tokens
+      ansible.builtin.command: >-
+        proxmox-backup-manager user list-tokens {{ pbs_backup_user }} --output-format json
+      register: _tokens
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    # generate-token rejects --output-format and wraps its JSON in a "Result:"
+    # prefix. Extracting the value here keeps the parsing out of Jinja, where
+    # the escaping needed inside a block scalar is a trap.
+    - name: Generate the API token
+      ansible.builtin.shell: |
+        set -o pipefail
+        proxmox-backup-manager user generate-token {{ pbs_backup_user }} {{ pbs_backup_token }} \
+          | sed -n 's/.*"value": "\(.*\)".*/\1/p'
+      args:
+        executable: /bin/bash
+      register: _newtoken
+      no_log: true
+      when: >-
+        (pbs_backup_user ~ '!' ~ pbs_backup_token)
+        not in (_tokens.stdout | default('[]') | from_json | map(attribute='tokenid') | list)
+
+    # DatastoreBackup alone is not enough: it can write backups but cannot see
+    # that the datastore exists, so PVE's storage check fails with "Cannot find
+    # datastore". DatastoreAudit adds read-only visibility of metadata.
+    # Still least-privilege - neither role can prune or delete arbitrary
+    # snapshots, nor touch other datastores.
+    #
+    # Granted to BOTH the user and the token: PBS token privilege separation
+    # makes a token's effective rights the INTERSECTION of the user's and the
+    # token's. Granting only to the token yields an empty intersection, and the
+    # symptom is a misleading "Cannot find datastore" from PVE.
+    - name: Grant datastore roles to the user and its token
+      ansible.builtin.command: >-
+        proxmox-backup-manager acl update /datastore/{{ pbs_datastore_name }} {{ item.1 }}
+        --auth-id "{{ item.0 }}"
+      loop: "{{ [pbs_backup_user, pbs_backup_user ~ '!' ~ pbs_backup_token]
+                | product(['DatastoreBackup', 'DatastoreAudit']) | list }}"
+      loop_control:
+        label: "{{ item.0 }} -> {{ item.1 }}"
+      changed_when: true
+
+    - name: Read the TLS fingerprint
+      ansible.builtin.shell: |
+        set -o pipefail
+        proxmox-backup-manager cert info | awk -F': ' '/Fingerprint/ {print $2}'
+      args:
+        executable: /bin/bash
+      register: _fp
+      changed_when: false
+      check_mode: false
+
+    - name: Stage the credentials for encryption
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../../secrets/.pbs.plain.yaml"
+        mode: "0600"
+        content: |
+          pbs_auth_id: "{{ pbs_backup_user }}!{{ pbs_backup_token }}"
+          pbs_token_secret: "{{ _newtoken.stdout | trim }}"
+          pbs_fingerprint: "{{ _fp.stdout | trim }}"
+          pbs_datastore: "{{ pbs_datastore_name }}"
+          pbs_server: "{{ hostvars[inventory_hostname].ansible_host }}"
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when: _newtoken is not skipped
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Token created and staged for encryption.'
+             if _newtoken is not skipped
+             else 'Token already exists - secrets/ untouched.' }}

@@ -15,6 +15,15 @@ for k, v in yaml.safe_load(sys.stdin).items():
     print(f"export {k}={shlex.quote(str(v))}")
 ')"
 
+# PBS credentials become TF_VAR_* so they never appear as literals in the config.
+if [ -f ../../secrets/pbs.sops.yaml ]; then
+  eval "$(sops -d ../../secrets/pbs.sops.yaml | python3 -c '
+import sys, yaml, shlex
+for k, v in yaml.safe_load(sys.stdin).items():
+    print(f"export TF_VAR_{k}={shlex.quote(str(v))}")
+')"
+fi
+
 # State and plan files are encrypted at rest.
 export TF_ENCRYPTION="
 key_provider \"pbkdf2\" \"main\" {

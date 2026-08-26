@@ -156,11 +156,13 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/13-adguard.yml        AdGuard Home - upstream resolver
       playbooks/14-pihole.yml         Pi-hole - client-facing resolver
       playbooks/15-pbs.yml            Proxmox Backup Server
+      playbooks/16-pbs-access.yml     PBS backup token + TLS fingerprint
     infra/opentofu/
-      pools.tf  templates.tf  containers.tf  vm-template.tf  pbs.tf
+      pools.tf  templates.tf  containers.tf  vm-template.tf  pbs.tf  backup.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
+    secrets/pbs.sops.yaml             PBS token + TLS fingerprint
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -242,7 +244,7 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
 - [ ] Configure **ACME** wildcard certs (Let's Encrypt DNS-01 via Cloudflare) for the
       node UIs.
 - [ ] Set up **`pve-exporter`** feeding Prometheus.
-- [ ] Configure **backups**: scheduled `vzdump` to a **PBS VM on `pve-01`**, plus
+- [x] Configure **backups**: scheduled `vzdump` to a **PBS VM on `pve-01`**, plus
       restic/rclone of *configs and small state* to a free-tier object store (B2 / R2).
       Full VM images stay local. The local copy dies with `pve-01` — the offsite leg is
       not optional.
