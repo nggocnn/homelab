@@ -1,0 +1,11 @@
+---
+forgejo_runner_version: "13.0.0"
+forgejo_runner_sha256: "cfcfe65e9ed5c9a4b344acfdbc3c32210b274c005a5888f46967c4d988177707"
+forgejo_instance_url: "http://10.10.10.143:3000"
+forgejo_runner_name: "ci-runner"
+# Labels decide which workflows this runner picks up. The docker labels map a
+# workflow's `runs-on` to an image.
+forgejo_runner_labels:
+  - "debian-latest:docker://node:22-bookworm"
+  - "ubuntu-latest:docker://node:22-bookworm"
+  - "native:host"

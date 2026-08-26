@@ -1,0 +1,135 @@
+---
+# --- docker -------------------------------------------------------------------
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+
+- name: Install the Docker signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Docker apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is running
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Verify Docker works inside the container
+  ansible.builtin.command: docker info --format '{{ "{{.ServerVersion}}" }}'
+  register: _dockerver
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: _dockerver.rc == 0
+
+# --- runner -------------------------------------------------------------------
+- name: Create the runner service account
+  ansible.builtin.user:
+    name: forgejo-runner
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/forgejo-runner
+    create_home: true
+    groups: docker
+    append: true
+
+- name: Check the installed runner version
+  ansible.builtin.command: /usr/local/bin/forgejo-runner --version
+  register: _runnerver
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install the runner binary
+  ansible.builtin.get_url:
+    url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}/forgejo-runner-{{ forgejo_runner_version }}-linux-amd64"
+    dest: /usr/local/bin/forgejo-runner
+    checksum: "sha256:{{ forgejo_runner_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: forgejo_runner_version not in (_runnerver.stdout | default(''))
+  notify: restart forgejo-runner
+
+- name: Check whether the runner is already registered
+  ansible.builtin.stat:
+    path: /var/lib/forgejo-runner/.runner
+  register: _registered
+
+- name: Register the runner
+  ansible.builtin.command: >-
+    runuser -u forgejo-runner --
+    /usr/local/bin/forgejo-runner register --no-interactive
+    --instance {{ forgejo_instance_url }}
+    --token {{ forgejo_runner_token }}
+    --name {{ forgejo_runner_name }}
+    --labels {{ forgejo_runner_labels | join(',') }}
+  args:
+    chdir: /var/lib/forgejo-runner
+  when: not _registered.stat.exists
+  no_log: true
+  notify: restart forgejo-runner
+
+- name: Install the runner systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/forgejo-runner.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note | default('Managed by Ansible') }}
+      [Unit]
+      Description=Forgejo Actions runner
+      After=docker.service network-online.target
+      Wants=network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=simple
+      User=forgejo-runner
+      WorkingDirectory=/var/lib/forgejo-runner
+      ExecStart=/usr/local/bin/forgejo-runner daemon
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - reload systemd for runner
+    - restart forgejo-runner
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure the runner is enabled and running
+  ansible.builtin.systemd_service:
+    name: forgejo-runner
+    enabled: true
+    state: started
+    daemon_reload: true

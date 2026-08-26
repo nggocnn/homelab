@@ -137,7 +137,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
 | `.100–.119` | `network` | cloudflared replicas `101/102/103`, Pi-hole `104`, AdGuard `105`, Tailscale `106` |
 | `.120–.139` | `access` | bastion `120`, remote desktop `121`, browser workspace `122` |
 | `.140–.149` | `infrastructure` | svc-core (Traefik/Keycloak/Homepage/ntfy) `141`, monitoring `142`, Forgejo `143`, PBS `148` |
-| `.150–.169` | `container-platform` | Docker host `151`, extra hosts `152+` |
+| `.150–.169` | `container-platform` | Docker host `151`, CI runner `152`, extra hosts `153+` |
 | `.170–.199` | `kubernetes-lab` | control plane `171`, workers `174–175` at first; `172/173/176` reserved for scale-up |
 | `.200–.249` | spare | ad-hoc experiments / restore drills / playground |
 
@@ -166,9 +166,11 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/25-loki.yml           Loki log aggregation
       playbooks/26-alloy.yml          Grafana Alloy ships journals to Loki
       playbooks/30-forgejo.yml        Forgejo: git, registry, Actions
+      playbooks/31-ci-runner.yml      Forgejo Actions runner (Docker executor)
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
-      pbs.tf  backup.tf  monitoring.tf  svc-core.tf  forgejo.tf
+      pbs.tf  backup.tf  monitoring.tf  svc-core.tf
+      forgejo.tf  ci-runner.tf
       ./tofu.sh init|plan|apply       wrapper: injects SOPS creds + state encryption
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
@@ -306,7 +308,8 @@ public upstream. HA DNS is explicitly out of scope for now; `.50` stays reserved
 
 - [x] **Forgejo LXC** `.143`: Forgejo 16.0.3, sqlite, registration disabled,
       container registry and Actions enabled. Admin account provisioned.
-      Actions *runner* not yet registered.
+      Actions runner registered on its own container `.152` with a Docker
+      executor — verified by running a real workflow to `success`.
 - [ ] **Mirror to GitHub**: Forgejo push-mirroring. GitHub stays the mirror-of-record
       and the bootstrap source — the forge cannot be the only home of the repo that
       deploys the forge.
@@ -507,6 +510,10 @@ Things that only surfaced because a step was checked rather than assumed:
   Generated up front by a script instead, so `app.ini` stays declarative and
   read-only. They must persist: regenerating any of them invalidates every
   session and stored credential.
+- **Docker runs fine in an unprivileged LXC** given `nesting=1,keyctl=1`
+  (overlayfs storage driver). The CI runner is a separate container from
+  Forgejo deliberately: workflows execute arbitrary code and should not share a
+  blast radius with the repositories and registry they can push to.
 - **Debian LXC images ship no `sudo`.** `become_user` fails with
   `sudo: not found`; `runuser -u <user> --` needs no extra package.
 - **Promtail reached end-of-life in March 2026.** Grafana Alloy replaces it;

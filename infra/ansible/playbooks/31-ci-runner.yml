@@ -1,0 +1,36 @@
+---
+# Forgejo Actions runner with the Docker executor.
+#
+# The registration token is fetched from Forgejo at run time rather than stored:
+# it is short-lived and single-purpose, and the resulting .runner credential is
+# what actually persists on the runner.
+#
+#   ansible-playbook playbooks/31-ci-runner.yml
+- name: Fetch a runner registration token
+  hosts: forgejo
+  gather_facts: false
+  vars:
+    _fj: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/forgejo.sops.yaml') | from_yaml }}"
+  tasks:
+    - name: Read the current registration token
+      ansible.builtin.command: >-
+        runuser -u git -- /usr/local/bin/forgejo actions generate-runner-token
+        --config /etc/forgejo/app.ini
+      environment:
+        GITEA_WORK_DIR: /var/lib/forgejo
+      register: _regtoken
+      changed_when: false
+      no_log: true
+
+    - name: Share the token with the runner play
+      ansible.builtin.set_fact:
+        forgejo_runner_token: "{{ _regtoken.stdout | trim }}"
+      no_log: true
+
+- name: Install the Actions runner
+  hosts: ci-runner
+  gather_facts: true
+  vars:
+    forgejo_runner_token: "{{ hostvars['forgejo'].forgejo_runner_token }}"
+  roles:
+    - ci_runner
