@@ -1,0 +1,11 @@
+---
+# AdGuard is the upstream half of the chain: it talks to the public internet.
+# DNS-over-TLS so the ISP cannot read or tamper with the queries.
+adguard_upstream_dns:
+  - "tls://dns.quad9.net"
+  - "tls://one.one.one.one"
+adguard_bootstrap_dns:
+  - "9.9.9.9"
+  - "1.1.1.1"
+adguard_listen_address: "10.10.10.105"
+adguard_web_port: 3000

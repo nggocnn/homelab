@@ -1,0 +1,32 @@
+---
+pihole_listen_address: "10.10.10.104"
+pihole_interface: "{{ ansible_default_ipv4.interface }}"
+
+# AdGuard first, public resolver as fallback. Without the fallback, AdGuard
+# going down takes all DNS with it -- including the resolution you would need
+# while fixing it. Pi-hole's own blocklists still apply either way, so a
+# fallback query is filtered, just less thoroughly.
+pihole_upstreams:
+  - "10.10.10.105"
+  - "9.9.9.9"
+
+pihole_blocklists:
+  - "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+
+# Reconciled via `pihole-FTL --config` on every run: read, compare, set only on
+# drift. FTL owns the file, so this repo owns the settings rather than the file.
+pihole_managed_settings:
+  - key: dns.upstreams
+    value: "[ {{ pihole_upstreams | join(', ') }} ]"
+  - key: dns.interface
+    value: "{{ pihole_interface }}"
+  - key: dns.listeningMode
+    value: "BIND"
+  # FTL's NTP client cannot set the clock in an unprivileged container and logs
+  # an error every 10 minutes trying. The host keeps time via chrony.
+  - key: ntp.sync.active
+    value: "false"
+  - key: ntp.ipv4.active
+    value: "false"
+  - key: ntp.ipv6.active
+    value: "false"

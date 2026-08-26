@@ -131,3 +131,101 @@ resource "proxmox_virtual_environment_container" "tailscale" {
     ignore_changes = [device_passthrough]
   }
 }
+
+# DNS chain: clients -> Pi-hole (.104) -> AdGuard (.105) -> public upstream.
+# Pinned to different nodes so one dead node cannot take out both halves.
+resource "proxmox_virtual_environment_container" "pihole" {
+  node_name     = "pve-02"
+  vm_id         = 104
+  pool_id       = proxmox_virtual_environment_pool.pools["network"].pool_id
+  description   = "Pi-hole - client-facing resolver and ad-blocker"
+  tags          = ["network", "dns", "pihole"]
+  unprivileged  = true
+  start_on_boot = true
+
+  cpu { cores = 1 }
+  memory { dedicated = 1024 }
+
+  disk {
+    datastore_id = "local-lvm"
+    size         = 8
+  }
+
+  operating_system {
+    template_file_id = proxmox_download_file.debian13_lxc["pve-02"].id
+    type             = "debian"
+  }
+
+  initialization {
+    hostname = "pihole"
+
+    ip_config {
+      ipv4 {
+        address = "10.10.10.104/24"
+        gateway = var.gateway
+      }
+    }
+
+    # Points at the gateway, not at itself - a resolver that depends on its own
+    # service cannot recover from a bad config.
+    dns {
+      servers = [var.gateway]
+    }
+
+    user_account {
+      keys = local.guest_ssh_keys
+    }
+  }
+
+  network_interface {
+    name   = "veth0"
+    bridge = "vmbr0"
+  }
+}
+
+resource "proxmox_virtual_environment_container" "adguard" {
+  node_name     = "pve-03"
+  vm_id         = 105
+  pool_id       = proxmox_virtual_environment_pool.pools["network"].pool_id
+  description   = "AdGuard Home - upstream resolver for Pi-hole"
+  tags          = ["network", "dns", "adguard"]
+  unprivileged  = true
+  start_on_boot = true
+
+  cpu { cores = 1 }
+  memory { dedicated = 1024 }
+
+  disk {
+    datastore_id = "local-lvm"
+    size         = 8
+  }
+
+  operating_system {
+    template_file_id = proxmox_download_file.debian13_lxc["pve-03"].id
+    type             = "debian"
+  }
+
+  initialization {
+    hostname = "adguard"
+
+    ip_config {
+      ipv4 {
+        address = "10.10.10.105/24"
+        gateway = var.gateway
+      }
+    }
+
+    dns {
+      servers = [var.gateway]
+    }
+
+    user_account {
+      keys = local.guest_ssh_keys
+    }
+  }
+
+  network_interface {
+    name   = "veth0"
+    bridge = "vmbr0"
+  }
+}

@@ -3,3 +3,4 @@ collections:
   - name: community.proxmox
   - name: community.general
   - name: ansible.posix
+  - name: community.sops

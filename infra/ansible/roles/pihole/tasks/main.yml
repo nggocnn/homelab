@@ -1,0 +1,89 @@
+---
+- name: Check whether Pi-hole is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/pihole
+  register: _pihole
+
+# --- first install only ------------------------------------------------------
+# v6's --unattended is silently ignored unless a config already exists: the
+# installer tries to open dialogs and dies. Pre-seeding pihole.toml is what
+# makes an automated install possible at all (pi-hole/pi-hole#6380).
+#
+# After install, FTL rewrites this file itself - adding comments and "### CHANGED"
+# annotations - so templating it on every run would rewrite and restart DNS
+# each time. Settings are reconciled through the config CLI below instead.
+- name: Ensure the Pi-hole config directory exists
+  ansible.builtin.file:
+    path: /etc/pihole
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not _pihole.stat.exists
+
+- name: Pre-seed pihole.toml for the unattended install
+  ansible.builtin.template:
+    src: pihole.toml.j2
+    dest: /etc/pihole/pihole.toml
+    owner: root
+    group: root
+    mode: "0644"
+  when: not _pihole.stat.exists
+
+- name: Install Pi-hole
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://install.pi-hole.net | bash /dev/stdin --unattended
+  args:
+    executable: /bin/bash
+  when: not _pihole.stat.exists
+
+# --- reconcile managed settings ---------------------------------------------
+- name: Read current settings
+  ansible.builtin.command: pihole-FTL --config {{ item.key }}
+  loop: "{{ pihole_managed_settings }}"
+  register: _current
+  changed_when: false
+  check_mode: false
+
+- name: Apply settings that have drifted
+  ansible.builtin.command: pihole-FTL --config {{ item.item.key }} '{{ item.item.value }}'
+  loop: "{{ _current.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.stdout | trim | replace(' ', '') != item.item.value | replace(' ', '')
+  notify: restart pihole-FTL
+
+- name: Configure blocklists
+  ansible.builtin.command: >-
+    pihole-FTL sqlite3 /etc/pihole/gravity.db
+    "INSERT OR IGNORE INTO adlist (address, enabled, comment)
+     VALUES ('{{ item }}', 1, 'managed by ansible');"
+  loop: "{{ pihole_blocklists }}"
+  changed_when: false
+
+- name: Ensure pihole-FTL is enabled and running
+  ansible.builtin.service:
+    name: pihole-FTL
+    enabled: true
+    state: started
+
+- name: Flush handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+# --- verify ------------------------------------------------------------------
+- name: Wait for DNS to answer
+  ansible.builtin.wait_for:
+    host: "{{ pihole_listen_address }}"
+    port: 53
+    timeout: 60
+
+- name: Resolve a name through Pi-hole
+  ansible.builtin.command: dig +short +time=5 +tries=2 @{{ pihole_listen_address }} example.com A
+  register: _dig
+  changed_when: false
+  failed_when: _dig.stdout | trim == ""
+
+- name: Show resolution result
+  ansible.builtin.debug:
+    msg: "Pi-hole resolves example.com -> {{ _dig.stdout_lines | join(', ') }}"
