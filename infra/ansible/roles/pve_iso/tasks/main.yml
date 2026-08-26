@@ -1,0 +1,76 @@
+---
+- name: Install the auto-install assistant
+  ansible.builtin.apt:
+    name:
+      - proxmox-auto-install-assistant
+      - xorriso
+    state: present
+
+- name: Create the working directory
+  ansible.builtin.file:
+    path: "{{ pve_iso_workdir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Fetch the Proxmox VE ISO
+  ansible.builtin.get_url:
+    url: "{{ pve_iso_url }}"
+    dest: "{{ pve_iso_workdir }}/proxmox-ve_{{ pve_iso_version }}.iso"
+    mode: "0644"
+    timeout: 120
+
+- name: Install the first-boot hook
+  ansible.builtin.copy:
+    src: first-boot.sh
+    dest: "{{ pve_iso_workdir }}/first-boot.sh"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write an answer file per node
+  ansible.builtin.template:
+    src: answer.toml.j2
+    dest: "{{ pve_iso_workdir }}/answer-{{ item }}.toml"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ groups['pve'] }}"
+  no_log: true
+
+# Validation is the point of this step: a malformed answer file is only
+# discovered at install time otherwise, in front of a machine with no OS.
+- name: Validate every answer file
+  ansible.builtin.command: >-
+    proxmox-auto-install-assistant validate-answer
+    {{ pve_iso_workdir }}/answer-{{ item }}.toml
+  loop: "{{ groups['pve'] }}"
+  register: _validate
+  changed_when: false
+
+- name: Build an auto-install ISO per node
+  ansible.builtin.command: >-
+    proxmox-auto-install-assistant prepare-iso
+    {{ pve_iso_workdir }}/proxmox-ve_{{ pve_iso_version }}.iso
+    --fetch-from iso
+    --answer-file {{ pve_iso_workdir }}/answer-{{ item }}.toml
+    --on-first-boot {{ pve_iso_workdir }}/first-boot.sh
+    --output {{ pve_iso_output_dir }}/pve-autoinstall-{{ item }}.iso
+  args:
+    creates: "{{ pve_iso_output_dir }}/pve-autoinstall-{{ item }}.iso"
+  loop: "{{ groups['pve'] }}"
+
+- name: Inspect the built ISOs
+  ansible.builtin.command: >-
+    proxmox-auto-install-assistant inspect-iso
+    {{ pve_iso_output_dir }}/pve-autoinstall-{{ item }}.iso
+  loop: "{{ groups['pve'] }}"
+  register: _inspect
+  changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ groups['pve'] | length }} ISOs in {{ pve_iso_output_dir }} -
+      {{ _inspect.results | map(attribute='item') | list | join(', ') }}
