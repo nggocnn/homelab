@@ -1,0 +1,13 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+# Provisioned, not clicked: a datasource created in the UI lives only in
+# Grafana's sqlite database and is lost on a rebuild.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: {{ prometheus_url }}
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "30s"

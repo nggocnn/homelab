@@ -1,0 +1,4 @@
+---
+grafana_port: 3000
+grafana_bind: "10.10.10.142"
+prometheus_url: "http://localhost:9090"

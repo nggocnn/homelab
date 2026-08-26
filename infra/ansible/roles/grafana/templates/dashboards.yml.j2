@@ -1,0 +1,12 @@
+# {{ pve_managed_note | default('Managed by Ansible') }}
+apiVersion: 1
+providers:
+  - name: homelab
+    orgId: 1
+    folder: Homelab
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

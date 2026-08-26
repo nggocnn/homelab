@@ -1,0 +1,15 @@
+---
+# Grafana, with the datasource and dashboard provisioned from files rather than
+# clicked in the UI - anything created in the UI lives only in Grafana's sqlite
+# database and does not survive a rebuild.
+#
+#   ansible-playbook playbooks/23-grafana.yml
+- name: Install and configure Grafana
+  hosts: monitoring
+  gather_facts: true
+  vars:
+    _gf: "{{ lookup('community.sops.sops', playbook_dir + '/../../../secrets/grafana.sops.yaml') | from_yaml }}"
+    grafana_admin_user: "{{ _gf.grafana_admin_user }}"
+    grafana_admin_password: "{{ _gf.grafana_admin_password }}"
+  roles:
+    - grafana
