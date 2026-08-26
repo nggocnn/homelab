@@ -160,6 +160,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
       playbooks/17-tailscale-hosts.yml  Tailscale on the hypervisors (out-of-band)
       playbooks/20-node-exporter.yml  node_exporter + hwmon/rapl sensors
       playbooks/21-prometheus.yml     Prometheus + Alertmanager + alert rules
+      playbooks/22-pve-exporter.yml   pve-exporter (read-only PVEAuditor token)
     infra/opentofu/
       pools.tf  templates.tf  containers.tf  vm-template.tf
       pbs.tf  backup.tf  monitoring.tf
@@ -167,6 +168,7 @@ Guests live in `.100`–`.254`, grouped into function blocks and Proxmox resourc
     secrets/tofu.sops.yaml            age-encrypted; see Secrets below
     secrets/dns.sops.yaml             Pi-hole / AdGuard admin credentials
     secrets/pbs.sops.yaml             PBS token + TLS fingerprint
+    secrets/monitoring.sops.yaml      read-only PVE token for pve-exporter
 
 Tooling is local and unprivileged: `.venv/` for Ansible, `~/.local/bin` for
 `tofu`, `sops` and `age`. Nothing needed root on the workstation.
@@ -247,7 +249,7 @@ this repo" literally true. Build it once and the next reinstall is a USB boot.
       the hosts, plus `pve-firewall stop` from the physical console.
 - [ ] Configure **ACME** wildcard certs (Let's Encrypt DNS-01 via Cloudflare) for the
       node UIs.
-- [ ] Set up **`pve-exporter`** feeding Prometheus.
+- [x] Set up **`pve-exporter`** feeding Prometheus (read-only `monitoring@pve` token).
 - [x] Configure **backups**: scheduled `vzdump` to a **PBS VM on `pve-01`**, plus
       restic/rclone of *configs and small state* to a free-tier object store (B2 / R2).
       Full VM images stay local. The local copy dies with `pve-01` — the offsite leg is
@@ -482,6 +484,13 @@ Things that only surfaced because a step was checked rather than assumed:
 - **Unprivileged LXC needs `nesting=1` for systemd-hardened services.** Debian's
   `prometheus.service` uses `PrivateUsers`, which fails with "Failed to set up
   user namespacing". Grafana and Loki will need the same.
+- **Every pve-exporter target returns cluster-wide data.** Scraping all three
+  nodes therefore triples each series, and an alert written naively fires three
+  times for one condition. Storage and guest alerts aggregate with
+  `max by (id)`.
+- **VM templates are guests that never run**, so a naive `GuestStopped` alert
+  fires on them forever. Excluded by joining against `pve_guest_info`'s
+  `template` label rather than guessing at VMID ranges.
 
 ---
 
