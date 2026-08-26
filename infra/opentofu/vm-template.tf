@@ -32,9 +32,12 @@ resource "proxmox_download_file" "debian13_cloud" {
   overwrite          = false
 }
 
-# Cloud-init user-data, uploaded per node (snippets live on local storage,
+# Cloud-init vendor-data, uploaded per node (snippets live on local storage,
 # which is not shared). This is the file that installs qemu-guest-agent.
-resource "proxmox_virtual_environment_file" "cloud_init_user_data" {
+#
+# Vendor-data, not user-data: user-data replaces the user/ssh-key config that
+# Proxmox generates from the initialization block, which locks you out.
+resource "proxmox_virtual_environment_file" "cloud_init_vendor_data" {
   for_each = var.nodes
 
   node_name    = each.key
@@ -42,8 +45,8 @@ resource "proxmox_virtual_environment_file" "cloud_init_user_data" {
   content_type = "snippets"
 
   source_file {
-    path      = "${path.module}/files/cloud-init-user-data.yaml"
-    file_name = "debian-13-user-data.yaml"
+    path      = "${path.module}/files/cloud-init-vendor-data.yaml"
+    file_name = "debian-13-vendor-data.yaml"
   }
 }
 
@@ -101,7 +104,7 @@ resource "proxmox_virtual_environment_vm" "debian_template" {
       keys     = local.guest_ssh_keys
     }
 
-    user_data_file_id = proxmox_virtual_environment_file.cloud_init_user_data[each.key].id
+    vendor_data_file_id = proxmox_virtual_environment_file.cloud_init_vendor_data[each.key].id
   }
 
   network_device {

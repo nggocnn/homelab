@@ -1,0 +1,162 @@
+---
+# Only needed to bootstrap the repo; afterwards the proxmox-archive-keyring
+# package owns this file, so re-downloading it every run is pointless churn.
+- name: Check for the Proxmox signing key
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/proxmox-archive-keyring.gpg
+  register: _pbskey
+
+- name: Install the Proxmox Backup Server signing key
+  ansible.builtin.get_url:
+    url: https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg
+    dest: /usr/share/keyrings/proxmox-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+  when: not _pbskey.stat.exists
+
+- name: Add the pbs-no-subscription repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pbs.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: http://download.proxmox.com/debian/pbs
+      Suites: trixie
+      Components: pbs-no-subscription
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      Enabled: true
+
+# Written BEFORE the install: the package ships pbs-enterprise.sources, which
+# 401s without a subscription and breaks every later apt run. Pre-creating it
+# disabled means dpkg treats it as a modified conffile and keeps our version,
+# and update_cache never has a broken repo to trip over.
+- name: Disable the pbs-enterprise repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pbs-enterprise.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://enterprise.proxmox.com/debian/pbs
+      Suites: trixie
+      Components: pbs-enterprise
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      Enabled: false
+
+- name: Install Proxmox Backup Server
+  ansible.builtin.apt:
+    name: proxmox-backup-server
+    state: present
+    update_cache: true
+
+# --- datastore disk ----------------------------------------------------------
+# Device names are not stable and the datastore disk is not reliably "the second
+# one": on this VM the 120 GB datastore came up as sda and the root disk as sdb.
+# Detect the spare disk instead, and refuse to proceed unless exactly one
+# candidate exists that is definitely not the root disk.
+- name: Find the disk holding the root filesystem
+  ansible.builtin.command: findmnt -no SOURCE /
+  register: _rootsrc
+  changed_when: false
+  check_mode: false
+
+- name: Resolve the root disk's parent device
+  ansible.builtin.command: lsblk -no PKNAME {{ _rootsrc.stdout | trim }}
+  register: _rootdisk
+  changed_when: false
+  check_mode: false
+
+- name: Enumerate block devices
+  ansible.builtin.command: lsblk -J -o NAME,SIZE,TYPE,FSTYPE
+  register: _lsblk
+  changed_when: false
+  check_mode: false
+
+- name: Identify candidate datastore disks
+  ansible.builtin.set_fact:
+    _candidates: >-
+      {{ (_lsblk.stdout | from_json).blockdevices
+         | selectattr('type', 'eq', 'disk')
+         | rejectattr('name', 'eq', _rootdisk.stdout | trim)
+         | rejectattr('children', 'defined')
+         | map(attribute='name') | list }}
+
+- name: Require exactly one candidate disk
+  ansible.builtin.assert:
+    that: _candidates | length == 1
+    fail_msg: >-
+      Expected exactly one spare disk for the datastore, found
+      {{ _candidates | length }}: {{ _candidates | join(', ') }}.
+      Root disk is {{ _rootdisk.stdout | trim }}. Refusing to guess.
+    quiet: true
+
+- name: Set the datastore device
+  ansible.builtin.set_fact:
+    pbs_datastore_device: "/dev/{{ _candidates[0] }}"
+
+- name: Check whether the datastore disk is already formatted
+  ansible.builtin.command: blkid -o value -s TYPE {{ pbs_datastore_device }}
+  register: _blkid
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Create a filesystem on the datastore disk
+  community.general.filesystem:
+    fstype: ext4
+    dev: "{{ pbs_datastore_device }}"
+  when: _blkid.stdout | trim == ""
+
+- name: Read the datastore filesystem UUID
+  ansible.builtin.command: blkid -o value -s UUID {{ pbs_datastore_device }}
+  register: _dsuuid
+  changed_when: false
+  check_mode: false
+
+# Mounted by UUID, not device name, for the same reason it is detected above.
+- name: Mount the datastore
+  ansible.posix.mount:
+    path: "{{ pbs_datastore_path }}"
+    src: "UUID={{ _dsuuid.stdout | trim }}"
+    fstype: ext4
+    opts: defaults,noatime
+    state: mounted
+
+# --- datastore ---------------------------------------------------------------
+- name: List existing datastores
+  ansible.builtin.command: proxmox-backup-manager datastore list --output-format json
+  register: _ds
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Create the datastore
+  ansible.builtin.command: >-
+    proxmox-backup-manager datastore create {{ pbs_datastore_name }} {{ pbs_datastore_path }}
+    --keep-daily {{ pbs_keep_daily }}
+    --keep-weekly {{ pbs_keep_weekly }}
+    --keep-monthly {{ pbs_keep_monthly }}
+  when: pbs_datastore_name not in (_ds.stdout | default('[]') | from_json | map(attribute='name') | list)
+
+- name: Ensure PBS services are running
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - proxmox-backup
+    - proxmox-backup-proxy
+
+- name: Report the datastore
+  ansible.builtin.command: proxmox-backup-manager datastore list
+  register: _dsfinal
+  changed_when: false
+  check_mode: false
+
+- name: Show datastores
+  ansible.builtin.debug:
+    msg: "{{ _dsfinal.stdout_lines }}"

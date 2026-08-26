@@ -1,0 +1,13 @@
+---
+# Proxmox Backup Server.
+#
+# Backups are the whole recovery story here: there is no ZFS replication, so a
+# dead node means restoring its guests onto a survivor.
+#
+#   ansible-playbook playbooks/15-pbs.yml
+- name: Install and configure Proxmox Backup Server
+  hosts: pbs
+  gather_facts: true
+  become: true
+  roles:
+    - pbs

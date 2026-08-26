@@ -1,5 +1,7 @@
 #cloud-config
-# Baked into the Debian template so every clone has these from first boot.
+# Delivered as cloud-init VENDOR-data, not user-data. User-data would REPLACE
+# the user/ssh-key config Proxmox generates from the initialization block,
+# locking you out of the guest. Vendor-data is merged alongside it instead.
 package_update: true
 package_upgrade: false
 
