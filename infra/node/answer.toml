@@ -1,0 +1,53 @@
+# =============================================================================
+#  Proxmox VE automated installation - answer.toml
+#
+#  Validate every time before use:
+#      proxmox-auto-install-assistant validate-answer answer.toml
+# =============================================================================
+
+[global]
+keyboard = "en-us"
+country  = "vn"
+
+# ---- CHANGE ME (1 of 4) ------------------------------------------------------
+fqdn = ""   # change FQDN for each PVE node
+# ------------------------------------------------------------------------------
+
+mailto   = "root@nggocnn.internal"
+timezone = "Asia/Ho_Chi_Minh"
+
+# ---- CHANGE ME (2 of 4) ------------------------------------------------------
+root-password-hashed = ""
+# ------------------------------------------------------------------------------
+
+# ---- CHANGE ME (3 of 4) ------------------------------------------------------
+root-ssh-keys = [
+  "ssh-ed25519 ...",
+]
+# ------------------------------------------------------------------------------
+
+reboot-on-error = false
+reboot-mode     = "reboot"
+
+[network]
+source = "from-answer"
+
+# ---- CHANGE ME (4 of 4) ------------------------------------------------------
+cidr = "10.10.10.11/24"         # change CIDR for each PVE node
+# ------------------------------------------------------------------------------
+
+gateway = "10.10.10.1"
+dns     = "10.10.10.1"          # router for now; repoint when DNS server exists
+
+# Exactly one Ethernet port per P330, so a wildcard is safe and name-agnostic.
+filter.ID_NET_NAME = "en*"
+
+[disk-setup]
+filesystem   = "ext4"
+disk-list    = ["nvme0n1"]
+lvm.swapsize = 8                # GiB. 0 disables swap entirely.
+lvm.maxroot  = 50               # GiB. Legal on the 256GB nodes too (cap is hdsize/4).
+
+[first-boot]
+source   = "from-iso"
+ordering = "fully-up"
