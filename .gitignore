@@ -1,0 +1,6 @@
+# Proxmox unattended install — generated locally, never committed.
+# answer-*.toml carries a real root password hash; *.iso is large binary and
+# also carries the answer file embedded (see infra/node/README.md Phase 2-4).
+infra/node/root-password.hash
+infra/node/answer-*.toml
+infra/node/*.iso
