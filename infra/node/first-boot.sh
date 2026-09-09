@@ -22,6 +22,10 @@ DO_TUNING=1           # swappiness, journal cap, C-state guard
 DO_IOMMU=1            # PCIe passthrough ready; harmless if unused
 DO_NO_NAG=1           # suppress the "No valid subscription" dialog in the web UI
 
+# download.proxmox.com GeoDNS can hand each node a different mirror, and a stale one leaves the cluster on mismatched versions.
+# Pin it, or set to download.proxmox.com for CDN failover.
+REPO_HOST=sg.cdn.proxmox.com
+
 # Your cluster - used by DO_HOSTS
 declare -A NODES=(
   [pve-01]=10.10.10.11
@@ -37,12 +41,16 @@ DOMAIN="nggocnn.internal"
 # ----------------------------------------------------------------------------
 add_cmdline() {
   local param="$1" key="${1%%=*}"
+
+  # Match the whole token
+  local re="(^|[[:space:]\"])${key}(=|[[:space:]\"]|\$)"
+
   if [ -f /etc/kernel/cmdline ]; then
-    grep -q -- "$key" /etc/kernel/cmdline && return 0
+    grep -qE "$re" /etc/kernel/cmdline && return 0
     sed -i "1 s|\$| $param|" /etc/kernel/cmdline
     proxmox-boot-tool refresh
   elif [ -f /etc/default/grub ]; then
-    grep -q -- "$key" /etc/default/grub && return 0
+    grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub | grep -qE "$re" && return 0
     sed -i "s|^\(GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*\)\"|\1 $param\"|" /etc/default/grub
     update-grub
   fi
@@ -85,6 +93,8 @@ Wants=network-pre.target
 Before=networking.service
 
 [Service]
+# No RemainAfterExit: the udev rule re-triggers this with a start job, and
+# systemd skips a start on an already-active unit.
 Type=oneshot
 ExecStart=/usr/local/sbin/pve-nic-fix
 
@@ -125,7 +135,7 @@ if [ "$DO_REPOS" = 1 ]; then
 
   cat > /etc/apt/sources.list.d/pve-no-subscription.sources <<EOF
 Types: deb
-URIs: http://download.proxmox.com/debian/pve
+URIs: http://$REPO_HOST/debian/pve
 Suites: $SUITE
 Components: pve-no-subscription
 Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
@@ -192,8 +202,12 @@ fi
 # ----------------------------------------------------------------------------
 # 4. SSH: keys only for root
 # ----------------------------------------------------------------------------
-if [ "$DO_SSH_HARDEN" = 1 ] && [ -s /root/.ssh/authorized_keys ]; then
+# `[ -s ]` is not enough. The placeholder "ssh-ed25519 ..." left in answer.toml
+# makes a non-empty file that is not a usable key, and hardening on top of that
+# locks every node out with no password fallback. ssh-keygen actually parses it.
+if [ "$DO_SSH_HARDEN" = 1 ] && ssh-keygen -l -f /root/.ssh/authorized_keys >/dev/null 2>&1; then
   echo "--- ssh hardening ---"
+  ssh-keygen -l -f /root/.ssh/authorized_keys | sed 's/^/  authorized key: /'
   install -d -m 755 /etc/ssh/sshd_config.d
   cat > /etc/ssh/sshd_config.d/10-pve-hardening.conf <<'EOF'
 PermitRootLogin prohibit-password
@@ -207,7 +221,8 @@ EOF
     rm -f /etc/ssh/sshd_config.d/10-pve-hardening.conf
   fi
 else
-  echo "--- ssh hardening SKIPPED (no authorized_keys - you'd lock yourself out) ---"
+  echo "!! ssh hardening SKIPPED - no valid key in /root/.ssh/authorized_keys."
+  echo "!! Check root-ssh-keys in answer.toml. Password login stays ENABLED."
 fi
 
 # ----------------------------------------------------------------------------
@@ -246,5 +261,16 @@ if [ "$DO_IOMMU" = 1 ]; then
   add_cmdline "iommu=pt"
   printf 'vfio\nvfio_iommu_type1\nvfio_pci\n' > /etc/modules-load.d/vfio.conf
 fi
+
+# ----------------------------------------------------------------------------
+# 8. Reboot after full-upgrade
+# ----------------------------------------------------------------------------
+echo "--- outstanding ---"
+LATEST_KERNEL=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -1)
+if [ -n "$LATEST_KERNEL" ] && [ "$LATEST_KERNEL" != "$(uname -r)" ]; then
+  echo "REBOOT REQUIRED: running $(uname -r), installed $LATEST_KERNEL"
+fi
+echo "REBOOT REQUIRED for kernel cmdline changes; /proc/cmdline is currently:"
+echo "  $(cat /proc/cmdline)"
 
 echo "=== pve first-boot done: $(date -Is) ==="
