@@ -1,0 +1,43 @@
+---
+# --- connection -------------------------------------------------------------
+# The key whose public half went into answer.toml's root-ssh-keys. first-boot.sh
+# set PermitRootLogin prohibit-password, so this key is the only way in over SSH.
+ansible_user: root
+ansible_ssh_private_key_file: ~/.ssh/pve.nggocnn.internal
+ansible_python_interpreter: /usr/bin/python3
+
+# --- cluster ----------------------------------------------------------------
+pve_cluster_name: pve
+pve_cluster_primary: "{{ groups['pve_primary'][0] }}"
+
+# --- host convergence -------------------------------------------------------
+# Public keys that may log in as root. Additive: existing keys are never pruned,
+# because pruning the wrong one locks all three nodes out at once.
+pve_root_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN/HHFuOPfJ2ccXo2XNHVzU0prgcVZu33CmXPLGqLk+s pve.nggocnn.internal"
+
+# intel_pstate's "powersave" still reaches full turbo under load - it is a ramp
+# policy, not a frequency cap, and it matters on three always-on boxes.
+pve_cpu_governor: powersave
+
+# VT-d passthrough. iommu=pt limits IOMMU translation to passed-through devices,
+# so host devices keep their normal DMA path.
+pve_kernel_params:
+  - intel_iommu=on
+  - iommu=pt
+
+# --- behaviour toggles ------------------------------------------------------
+pve_repo_no_subscription: true   # enterprise repo off, no-subscription on
+
+# download.proxmox.com GeoDNS rotates between sg and au here, and au runs days
+# behind - which left the three nodes on different pve-manager versions. Pinned
+# so all three see one index. Revert to download.proxmox.com to regain failover.
+pve_repo_host: sg.cdn.proxmox.com
+
+pve_disable_ceph_repo: true      # not using Ceph
+pve_remove_nag: true
+pve_nic_offload_fix: true        # I219-LM e1000e hang workaround
+pve_iommu: true
+pve_unattended_upgrades: true
+pve_do_dist_upgrade: false       # opt in with -e pve_do_dist_upgrade=true
+pve_allow_reboot: true           # -e pve_allow_reboot=false to disarm

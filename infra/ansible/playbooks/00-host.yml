@@ -1,0 +1,17 @@
+---
+# Phase 0 - take ownership of everything first-boot.sh set once.
+#
+# Idempotent and safe to re-run at any time
+#
+#   ansible-playbook playbooks/00-host.yml --check --diff
+#   ansible-playbook playbooks/00-host.yml
+#   ansible-playbook playbooks/00-host.yml -e pve_allow_reboot=false
+#   ansible-playbook playbooks/00-host.yml -e pve_do_dist_upgrade=true
+#   ansible-playbook playbooks/00-host.yml --tags nic,repos
+- name: Configure Proxmox VE hosts
+  hosts: pve
+  gather_facts: true
+  # One node at a time, including each reboot.
+  serial: 1
+  roles:
+    - pve_host
