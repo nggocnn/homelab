@@ -1,0 +1,22 @@
+#!/bin/bash
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+#
+# Idempotently neuter the "No valid subscription" dialog in the PVE web UI by
+# patching the client-side check in proxmox-widget-toolkit.
+#
+# The nag returns with every proxmox-widget-toolkit upgrade, so this is also
+# wired to an APT Post-Invoke hook rather than relying on an Ansible run.
+JS=/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+[ -f "$JS" ] || exit 0
+grep -q 'orig_checked_command' "$JS" && exit 0          # already patched
+
+sed -i.bak -e 's#\(^ *checked_command: *function *(orig_cmd) *{$\)#\1orig_cmd();},orig_checked_command:function(orig_cmd){#' "$JS"
+
+if ! grep -q 'orig_checked_command' "$JS"; then
+  cp -f "$JS.bak" "$JS"
+  logger -t pve-no-nag "PATTERN NOT FOUND - upstream JS changed, no patch applied"
+  exit 1
+fi
+
+systemctl restart pveproxy.service
+logger -t pve-no-nag "patched $JS and restarted pveproxy"

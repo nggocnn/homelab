@@ -1,0 +1,103 @@
+---
+# Runs last, so a reboot is also the proof that everything above survives one.
+- name: Compare the running kernel against the newest installed one
+  ansible.builtin.shell: |
+    set -o pipefail
+    latest=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -1)
+    [ -n "$latest" ] && [ "$latest" != "$(uname -r)" ] && echo "$latest" || true
+  args:
+    executable: /bin/bash
+  register: _newer_kernel
+  changed_when: false
+  check_mode: false
+
+- name: Decide whether a reboot is needed
+  ansible.builtin.set_fact:
+    _pve_reboot_needed: >-
+      {{ (pve_missing_kernel_params | default([]) | length > 0)
+         or (_newer_kernel.stdout | trim | length > 0) }}
+
+- name: Report the pending reboot
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: reboot needed -
+      {% if _newer_kernel.stdout | trim %}kernel {{ _newer_kernel.stdout | trim }} installed,
+      {{ ansible_facts['kernel'] }} running{% endif %}
+      {%- if pve_missing_kernel_params | default([]) %}
+      {{ ' ; ' if _newer_kernel.stdout | trim }}not yet active:
+      {{ pve_missing_kernel_params | join(', ') }}{% endif %}
+  when: _pve_reboot_needed | bool
+
+- name: Warn that the reboot is disarmed
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: REBOOT REQUIRED but pve_allow_reboot is false.
+      Reboot by hand before relying on the kernel parameters above.
+  when:
+    - _pve_reboot_needed | bool
+    - not (pve_allow_reboot | bool)
+
+- name: Reboot the node
+  ansible.builtin.reboot:
+    reboot_timeout: 900
+    post_reboot_delay: 20
+    msg: "Rebooting for kernel and cmdline changes (Ansible, pve_host role)"
+  when:
+    - _pve_reboot_needed | bool
+    - pve_allow_reboot | bool
+    - not ansible_check_mode
+  register: _rebooted
+
+- name: Wait for pvedaemon to come back
+  ansible.builtin.command:
+    cmd: systemctl is-active pvedaemon
+  register: _pvedaemon
+  until: _pvedaemon.stdout | trim == 'active'
+  retries: 30
+  delay: 5
+  changed_when: false
+  check_mode: false
+  when: _rebooted.rebooted | default(false)
+
+- name: Check whether this node is clustered
+  ansible.builtin.stat:
+    path: /etc/pve/corosync.conf
+  register: _corosync_conf
+  when: _rebooted.rebooted | default(false)
+
+- name: Wait for quorum to return before moving to the next node
+  ansible.builtin.command:
+    cmd: pvecm status
+  register: _quorum
+  until: "'Quorate: Yes' in _quorum.stdout"
+  retries: 30
+  delay: 10
+  changed_when: false
+  check_mode: false
+  when:
+    - _rebooted.rebooted | default(false)
+    - _corosync_conf.stat.exists | default(false)
+
+- name: Confirm the kernel parameters are now active
+  ansible.builtin.shell: |
+    set -o pipefail
+    cat /proc/cmdline
+  args:
+    executable: /bin/bash
+  register: _final_cmdline
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Assert every requested kernel parameter is active
+  ansible.builtin.assert:
+    that: pve_kernel_params | difference(_final_cmdline.stdout | split) | length == 0
+    fail_msg: >-
+      Still missing from /proc/cmdline:
+      {{ pve_kernel_params | difference(_final_cmdline.stdout | split) | join(', ') }}
+    success_msg: "Active: {{ pve_kernel_params | join(', ') }}"
+    quiet: true
+  when:
+    - not ansible_check_mode
+    - pve_iommu | bool
+    - pve_allow_reboot | bool

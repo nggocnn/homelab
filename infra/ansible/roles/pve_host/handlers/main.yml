@@ -1,0 +1,38 @@
+---
+- name: reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: reload udev rules
+  ansible.builtin.command:
+    cmd: udevadm control --reload-rules
+  changed_when: true
+
+- name: restart pveproxy
+  ansible.builtin.service:
+    name: pveproxy
+    state: restarted
+
+- name: restart journald
+  ansible.builtin.service:
+    name: systemd-journald
+    state: restarted
+
+- name: reload sshd
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
+- name: apt update
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: update grub
+  ansible.builtin.command:
+    cmd: update-grub
+  changed_when: true
+
+- name: refresh proxmox boot
+  ansible.builtin.command:
+    cmd: proxmox-boot-tool refresh
+  changed_when: true

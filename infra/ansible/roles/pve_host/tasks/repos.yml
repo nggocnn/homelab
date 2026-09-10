@@ -1,0 +1,74 @@
+---
+# PVE 9 / Debian 13 use the deb822 (.sources) format.
+#
+# Written with `copy` rather than ansible.builtin.deb822_repository because that
+# module reports `changed` on every run (ansible/ansible#82454), which would hide
+# real drift behind permanent noise.
+#
+# The enterprise entries are disabled in place rather than deleted: a PVE upgrade
+# that ships the file again finds it already present and leaves our Enabled:false.
+
+- name: Disable the pve-enterprise repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-enterprise.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      Types: deb
+      URIs: https://enterprise.proxmox.com/debian/pve
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: pve-enterprise
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      Enabled: false
+  when: pve_repo_no_subscription | bool
+  notify: apt update
+
+- name: Disable the enterprise Ceph repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/ceph.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      Types: deb
+      URIs: https://enterprise.proxmox.com/debian/ceph-squid
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: enterprise
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      Enabled: false
+  when: pve_disable_ceph_repo | bool
+  notify: apt update
+
+- name: Enable the pve-no-subscription repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-no-subscription.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      Types: deb
+      URIs: http://{{ pve_repo_host }}/debian/pve
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: pve-no-subscription
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      Enabled: true
+  when: pve_repo_no_subscription | bool
+  notify: apt update
+
+- name: Flush handlers so the apt cache is refreshed before anything installs
+  ansible.builtin.meta: flush_handlers
+
+- name: Refresh the apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Run a full distribution upgrade
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+  when: pve_do_dist_upgrade | bool

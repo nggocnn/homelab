@@ -1,0 +1,5 @@
+---
+- name: Install the base package set
+  ansible.builtin.apt:
+    name: "{{ pve_packages }}"
+    state: present

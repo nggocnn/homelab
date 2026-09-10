@@ -1,0 +1,112 @@
+---
+# Intel I219-LM / e1000e "Detected Hardware Unit Hang" workaround.
+#
+# Same three files first-boot.sh installs, at the same paths, so there is exactly
+# one mechanism on the node rather than two competing ones.
+
+- name: Ensure ethtool is installed
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+
+- name: Install the NIC fix script
+  ansible.builtin.copy:
+    src: pve-nic-fix
+    dest: /usr/local/sbin/pve-nic-fix
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the NIC fix unit
+  ansible.builtin.copy:
+    src: pve-nic-fix.service
+    dest: /etc/systemd/system/pve-nic-fix.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd
+
+- name: Install the NIC fix udev rule
+  ansible.builtin.copy:
+    src: 70-pve-nic-fix.rules
+    dest: /etc/udev/rules.d/70-pve-nic-fix.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload udev rules
+
+- name: Flush handlers so the unit is loaded before we enable it
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the NIC fix at boot
+  ansible.builtin.systemd_service:
+    name: pve-nic-fix.service
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Leave the oneshot at rest so udev can re-trigger it
+  ansible.builtin.systemd_service:
+    name: pve-nic-fix.service
+    state: stopped
+  when: not ansible_check_mode
+
+- name: Apply the NIC fix now
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/pve-nic-fix
+  changed_when: false
+  when: not ansible_check_mode
+
+# --- verify -----------------------------------------------------------------
+- name: Discover Intel e1000/e1000e interfaces
+  ansible.builtin.shell: |
+    shopt -s nullglob
+    for path in /sys/class/net/*; do
+      [ -e "$path/device/driver" ] || continue
+      case "$(basename "$(readlink -f "$path/device/driver")")" in
+        e1000e|e1000) echo "${path##*/}" ;;
+      esac
+    done
+  args:
+    executable: /bin/bash
+  register: _e1000_ifaces
+  changed_when: false
+  check_mode: false
+
+- name: Assert at least one e1000e interface was found
+  ansible.builtin.assert:
+    that: _e1000_ifaces.stdout_lines | length > 0
+    fail_msg: >-
+      No e1000/e1000e interface on {{ inventory_hostname }}. Either the hardware
+      changed or the driver did not bind - the hang workaround is protecting
+      nothing. Interfaces present: {{ ansible_facts['interfaces'] | join(', ') }}
+    quiet: true
+
+- name: Read back the offload and EEE state
+  ansible.builtin.shell: |
+    set -o pipefail
+    ethtool -k {{ item | quote }}
+    ethtool --show-eee {{ item | quote }}
+  args:
+    executable: /bin/bash
+  loop: "{{ _e1000_ifaces.stdout_lines }}"
+  register: _nic_state
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Assert offloads and EEE are actually off
+  ansible.builtin.assert:
+    that:
+      - "'tcp-segmentation-offload: off' in item.stdout"
+      - "'generic-segmentation-offload: off' in item.stdout"
+      - "'generic-receive-offload: off' in item.stdout"
+      - "'EEE status: disabled' in item.stdout"
+    fail_msg: >-
+      The e1000e workaround did not take on {{ item.item }} - TX hang and link
+      flap risk remains, and on a single-NIC cluster that reads as node loss.
+    quiet: true
+  loop: "{{ _nic_state.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('') }}"
+  when: not ansible_check_mode
