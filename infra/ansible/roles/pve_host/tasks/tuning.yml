@@ -1,0 +1,42 @@
+---
+- name: Set kernel tunables
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-pve-local.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      # Guests own their own memory; the hypervisor should not swap eagerly.
+      vm.swappiness = 10
+  register: _sysctl_file
+
+- name: Apply the tunables now
+  ansible.builtin.command:
+    cmd: sysctl --system
+  changed_when: false
+  when:
+    - _sysctl_file.changed
+    - not ansible_check_mode
+
+# The root filesystem is 50 GB and shared with everything; a chatty guest or a
+# flapping service should not be able to fill it with journal.
+- name: Ensure the journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cap the systemd journal
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/size.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      [Journal]
+      SystemMaxUse=1G
+  notify: restart journald

@@ -1,0 +1,26 @@
+---
+- name: Template /etc/hosts with every node's name and FQDN
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Read back the resolved FQDN
+  ansible.builtin.command:
+    cmd: hostname -f
+  changed_when: false
+  check_mode: false
+  register: _fqdn
+
+# The node name is baked into /etc/pve once the cluster forms and cannot be
+# changed afterwards, so a wrong FQDN has to fail here rather than later.
+- name: Assert the FQDN is correct
+  ansible.builtin.assert:
+    that: _fqdn.stdout == inventory_hostname ~ '.' ~ pve_domain
+    fail_msg: >-
+      hostname -f returned '{{ _fqdn.stdout }}', expected
+      '{{ inventory_hostname }}.{{ pve_domain }}'
+    quiet: true

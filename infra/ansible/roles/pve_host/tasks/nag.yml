@@ -1,0 +1,43 @@
+---
+- name: Install the subscription-nag patcher
+  ansible.builtin.copy:
+    src: pve-no-nag
+    dest: /usr/local/sbin/pve-no-nag
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Re-apply the nag patch after every apt run
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99-pve-no-nag
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // {{ pve_managed_note }}
+      DPkg::Post-Invoke { "[ -x /usr/local/sbin/pve-no-nag ] && /usr/local/sbin/pve-no-nag >/dev/null 2>&1 || true"; };
+
+- name: Check whether the nag patch is applied
+  ansible.builtin.command:
+    cmd: grep -q orig_checked_command /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+  register: _nag_patched
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Apply the nag patch now
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/pve-no-nag
+  register: _nag_apply
+  changed_when: _nag_apply.rc == 0
+  failed_when: false
+  when:
+    - _nag_patched.rc != 0
+    - not ansible_check_mode
+
+- name: Warn if the nag patch did not apply
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: nag patch not applied - upstream proxmoxlib.js
+      changed shape. See `journalctl -t pve-no-nag`. Cosmetic only.
+  when: _nag_apply.rc | default(0) != 0

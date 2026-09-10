@@ -1,0 +1,75 @@
+---
+# Kernel command line, merged by whole token.
+- name: Compute the kernel parameter keys we own
+  ansible.builtin.set_fact:
+    _pve_param_re: "^({{ pve_kernel_params | map('regex_replace', '=.*$', '') | join('|') }})(=|$)"
+
+- name: Detect the bootloader
+  ansible.builtin.stat:
+    path: /etc/kernel/cmdline
+  register: _systemd_boot
+
+# --- systemd-boot (ZFS root) ------------------------------------------------
+- name: Read the systemd-boot command line
+  ansible.builtin.slurp:
+    src: /etc/kernel/cmdline
+  register: _sdboot_raw
+  when: _systemd_boot.stat.exists
+
+- name: Merge our parameters into the systemd-boot command line
+  ansible.builtin.copy:
+    dest: /etc/kernel/cmdline
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      {{ ((_sdboot_raw.content | b64decode | trim | split
+           | reject('match', _pve_param_re) | list) + pve_kernel_params) | join(' ') }}
+  when: _systemd_boot.stat.exists
+  notify: refresh proxmox boot
+
+# --- GRUB (ext4 + LVM root, which is what these nodes run) ------------------
+- name: Read /etc/default/grub
+  ansible.builtin.slurp:
+    src: /etc/default/grub
+  register: _grub_raw
+  when: not _systemd_boot.stat.exists
+
+- name: Merge our parameters into GRUB_CMDLINE_LINUX_DEFAULT
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: >-
+      GRUB_CMDLINE_LINUX_DEFAULT="{{
+        (((_grub_raw.content | b64decode
+            | regex_search('^GRUB_CMDLINE_LINUX_DEFAULT="([^"]*)"', '\1', multiline=True)
+            | default([], true) | first | default('')) | split
+          | reject('match', _pve_param_re) | list) + pve_kernel_params) | join(' ') }}"
+    backup: true
+  when: not _systemd_boot.stat.exists
+  notify: update grub
+
+- name: Load the vfio modules at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/vfio.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      vfio
+      vfio_iommu_type1
+      vfio_pci
+
+- name: Apply the bootloader change now
+  ansible.builtin.meta: flush_handlers
+
+# --- has it taken effect? ---------------------------------------------------
+- name: Read the running kernel command line
+  ansible.builtin.slurp:
+    src: /proc/cmdline
+  register: _proc_cmdline
+
+- name: Record which parameters are not active yet
+  ansible.builtin.set_fact:
+    pve_missing_kernel_params: "{{ pve_kernel_params | difference(_proc_cmdline.content | b64decode | split) }}"

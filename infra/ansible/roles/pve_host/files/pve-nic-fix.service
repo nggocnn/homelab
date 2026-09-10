@@ -1,0 +1,17 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+[Unit]
+Description=Disable EEE/TSO on Intel e1000e NICs (hardware unit hang workaround)
+After=network-pre.target
+Wants=network-pre.target
+Before=networking.service
+
+[Service]
+# Deliberately NO RemainAfterExit. The udev rule re-triggers this unit with a
+# start job when the NIC reappears, and systemd skips a start on a unit that is
+# already active - so RemainAfterExit=yes would silently disable the re-apply
+# path that exists because EEE comes back on every link renegotiation.
+Type=oneshot
+ExecStart=/usr/local/sbin/pve-nic-fix
+
+[Install]
+WantedBy=multi-user.target

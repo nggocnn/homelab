@@ -1,0 +1,4 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+# Re-apply whenever the NIC (re)appears - covers driver resets and hotplug.
+# EEE in particular comes back on every link renegotiation, so the boot-time unit alone is not enough.
+ACTION=="add", SUBSYSTEM=="net", ENV{ID_NET_DRIVER}=="e1000e", TAG+="systemd", ENV{SYSTEMD_WANTS}+="pve-nic-fix.service"

@@ -1,0 +1,71 @@
+---
+- name: Assert this is a Proxmox VE node
+  ansible.builtin.stat:
+    path: /usr/bin/pveversion
+  register: _pveversion
+  failed_when: not _pveversion.stat.exists
+
+- name: Read the PVE version
+  ansible.builtin.command:
+    cmd: pveversion
+  changed_when: false
+  check_mode: false
+  register: _pve_ver
+
+- name: Show the PVE version
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ _pve_ver.stdout }}"
+
+- name: Repositories
+  ansible.builtin.import_tasks: repos.yml
+  tags: [repos]
+
+- name: Packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: NIC offload workaround
+  ansible.builtin.import_tasks: nic.yml
+  when: pve_nic_offload_fix | bool
+  tags: [network, nic]
+
+- name: Subscription nag
+  ansible.builtin.import_tasks: nag.yml
+  when: pve_remove_nag | bool
+  tags: [nag]
+
+- name: Hosts file
+  ansible.builtin.import_tasks: hostsfile.yml
+  tags: [hosts]
+
+- name: Time sync
+  ansible.builtin.import_tasks: time.yml
+  tags: [time]
+
+- name: SSH
+  ansible.builtin.import_tasks: ssh.yml
+  tags: [ssh]
+
+- name: Kernel and journal tuning
+  ansible.builtin.import_tasks: tuning.yml
+  tags: [tuning]
+
+- name: IOMMU
+  ansible.builtin.import_tasks: iommu.yml
+  when: pve_iommu | bool
+  tags: [iommu]
+
+- name: CPU governor
+  ansible.builtin.import_tasks: power.yml
+  tags: [power]
+
+- name: Unattended upgrades
+  ansible.builtin.import_tasks: updates.yml
+  when: pve_unattended_upgrades | bool
+  tags: [updates]
+
+# Last: everything above must be in place before the node goes down, so that a
+# reboot is also the proof that it all survives one.
+- name: Reboot if pending
+  ansible.builtin.import_tasks: reboot.yml
+  tags: [reboot]
