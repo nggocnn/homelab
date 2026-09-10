@@ -18,7 +18,7 @@ DO_UPGRADE=1          # apt full-upgrade on first boot
 DO_PACKAGES=1         # ethtool, lm-sensors, intel-microcode, etc.
 DO_SSH_HARDEN=1       # root login by key only (needs root-ssh-keys in answer.toml)
 DO_HOSTS=1            # static /etc/hosts entries for all three nodes
-DO_TUNING=1           # swappiness, journal cap, C-state guard
+DO_TUNING=1           # swappiness, journal cap
 DO_IOMMU=1            # PCIe passthrough ready; harmless if unused
 DO_NO_NAG=1           # suppress the "No valid subscription" dialog in the web UI
 
@@ -53,6 +53,9 @@ add_cmdline() {
     grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub | grep -qE "$re" && return 0
     sed -i "s|^\(GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*\)\"|\1 $param\"|" /etc/default/grub
     update-grub
+  else
+    echo "!! no /etc/kernel/cmdline or /etc/default/grub - $param NOT added"
+    return 1
   fi
   echo "kernel cmdline: added $param (takes effect after reboot)"
 }
@@ -93,8 +96,10 @@ Wants=network-pre.target
 Before=networking.service
 
 [Service]
-# No RemainAfterExit: the udev rule re-triggers this with a start job, and
-# systemd skips a start on an already-active unit.
+# Deliberately NO RemainAfterExit. The udev rule re-triggers this unit with a
+# start job when the NIC reappears, and systemd skips a start on a unit that is
+# already active - so RemainAfterExit=yes would silently disable the re-apply
+# path that exists because EEE comes back on every link renegotiation.
 Type=oneshot
 ExecStart=/usr/local/sbin/pve-nic-fix
 
