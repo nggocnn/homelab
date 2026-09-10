@@ -1,0 +1,55 @@
+---
+# intel_pstate's "powersave" is a ramp policy, not a frequency cap - the CPU
+# still reaches full turbo under load. On three always-on boxes that idle most
+# of the day it is the free half of the power bill.
+- name: Install the CPU governor unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pve-cpu-governor.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ pve_managed_note }}
+      [Unit]
+      Description=Set CPU scaling governor to {{ pve_cpu_governor }}
+      After=multi-user.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo {{ pve_cpu_governor }} > "$g"; done'
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload systemd
+
+- name: Flush handlers before enabling the governor unit
+  ansible.builtin.meta: flush_handlers
+
+# Skipped in check mode: the unit file was not really written, so systemd has
+# nothing to enable and the module fails on a node that has not converged yet.
+- name: Enable and start the CPU governor unit
+  ansible.builtin.systemd_service:
+    name: pve-cpu-governor.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Read back the active governor
+  ansible.builtin.command:
+    cmd: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+  changed_when: false
+  check_mode: false
+  register: _governor
+  when: not ansible_check_mode
+
+- name: Assert the governor took effect
+  ansible.builtin.assert:
+    that: _governor.stdout | trim == pve_cpu_governor
+    fail_msg: >-
+      Governor is '{{ _governor.stdout | default('') | trim }}', expected
+      '{{ pve_cpu_governor }}'. Check that intel_pstate offers it:
+      cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
+    quiet: true
+  when: not ansible_check_mode

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+#
+# Disable EEE + TX offloads on Intel NICs known to hit the e1000e unit hang.
+#
+# The I219-LM in the P330 Tiny wedges its TX ring under load. Intel has
+# acknowledged TSO as the trigger; EEE/LPI renegotiation makes it worse on some
+# switches. On a single-NIC cluster a wedged NIC while corosync is running does
+# not look like a dropped download - it looks like node loss.
+#
+# Interfaces are matched by DRIVER, never by name: PVE 9's stable naming scheme
+# means the onboard port can be eno1 or nic0 depending on the machine, and
+# guessing wrong leaves the fix silently unapplied.
+shopt -s nullglob
+for path in /sys/class/net/*; do
+  ifc=${path##*/}
+  [ -e "$path/device/driver" ] || continue          # skip lo, bridges, veth, taps
+  drv=$(basename "$(readlink -f "$path/device/driver")")
+  case "$drv" in
+    e1000e|e1000) ;;
+    *) continue ;;
+  esac
+  /usr/sbin/ethtool --set-eee "$ifc" eee off        &>/dev/null
+  /usr/sbin/ethtool -K "$ifc" tso off gso off gro off &>/dev/null
+  logger -t pve-nic-fix "EEE + tso/gso/gro disabled on $ifc (driver=$drv)"
+done

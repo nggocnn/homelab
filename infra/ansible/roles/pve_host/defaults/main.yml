@@ -1,0 +1,38 @@
+---
+pve_domain: local
+
+pve_repo_no_subscription: true
+pve_repo_host: download.proxmox.com
+pve_disable_ceph_repo: true
+pve_remove_nag: true
+pve_nic_offload_fix: true
+pve_iommu: true
+pve_unattended_upgrades: true
+pve_do_dist_upgrade: false
+pve_allow_reboot: false          # opt-in: a role default must not reboot a hypervisor
+
+pve_cpu_governor: powersave
+pve_kernel_params:
+  - intel_iommu=on
+  - iommu=pt
+
+pve_root_authorized_keys: []
+
+# Same set first-boot.sh installs, so a node converges to one package list
+# whether it arrived here from the ISO or from this role.
+pve_packages:
+  - ethtool
+  - lm-sensors
+  - smartmontools
+  - nvme-cli
+  - intel-microcode
+  - htop
+  - iotop
+  - iftop
+  - iperf3
+  - tmux
+  - vim
+  - curl
+  - jq
+
+pve_managed_note: "Managed by Ansible (homelab/infra/ansible) - do not edit by hand"

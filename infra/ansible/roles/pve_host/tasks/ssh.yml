@@ -1,0 +1,32 @@
+---
+- name: Authorise root SSH keys
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ item }}"
+    state: present
+    exclusive: false
+  loop: "{{ pve_root_authorized_keys }}"
+  loop_control:
+    label: "{{ item.split() | last }}"
+
+- name: Assert root has at least one authorised key before hardening SSH
+  ansible.builtin.stat:
+    path: /root/.ssh/authorized_keys
+  register: _authkeys
+  failed_when: not _authkeys.stat.exists or _authkeys.stat.size == 0
+
+# `validate` runs sshd -t against the candidate file, so a malformed drop-in is
+# rejected before it is ever installed.
+- name: Harden SSH to key-only root login
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-pve-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+    content: |
+      # {{ pve_managed_note }}
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+  notify: reload sshd
