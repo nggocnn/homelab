@@ -1,0 +1,10 @@
+---
+# Site-wide facts, referenced by hosts and (later) guests alike.
+
+# Node identity domain. ICANN permanently reserved `.internal` from root-zone
+# delegation, so it can never collide with a real name and does not depend on
+# a registration staying renewed. See infra/node/README.md.
+pve_domain: nggocnn.internal
+
+pve_subnet_cidr: 10.10.10.0/24
+pve_gateway: 10.10.10.1
