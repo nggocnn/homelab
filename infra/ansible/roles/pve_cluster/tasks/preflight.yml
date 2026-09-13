@@ -1,0 +1,108 @@
+---
+# Runs against every node, in parallel, BEFORE anything mutates.
+#
+# Cluster formation is the one genuinely one-way door in this phase: `pvecm add`
+# destroys the joining node's guest configuration and a node's name is immutable
+# once it is a member. Everything that could make that a mistake is checked here,
+# where the answer is still "stop" rather than "restore from backup".
+
+- name: Detect current membership
+  ansible.builtin.import_tasks: detect.yml
+
+- name: Assert an already-clustered node is in the right cluster
+  ansible.builtin.assert:
+    that: pve_current_cluster == pve_cluster_name
+    fail_msg: >-
+      {{ inventory_hostname }} is already a member of cluster
+      '{{ pve_current_cluster }}', not '{{ pve_cluster_name }}'. Joining it to a
+      second cluster is not possible; resolve by hand.
+    quiet: true
+  when: pve_is_clustered | bool
+
+- name: Read the resolved FQDN
+  ansible.builtin.command:
+    cmd: hostname -f
+  changed_when: false
+  check_mode: false
+  register: _fqdn
+
+# The node name is written into /etc/pve at join time and cannot be changed
+# afterwards without removing and re-adding the node.
+- name: Assert the node name is final and correct
+  ansible.builtin.assert:
+    that: _fqdn.stdout == inventory_hostname ~ '.' ~ pve_domain
+    fail_msg: >-
+      hostname -f is '{{ _fqdn.stdout }}', expected
+      '{{ inventory_hostname }}.{{ pve_domain }}'. Node names are immutable after
+      joining - fix /etc/hosts (playbooks/00-host.yml) first.
+    quiet: true
+
+- name: Read the time sync status
+  ansible.builtin.command:
+    cmd: timedatectl show -p NTPSynchronized --value
+  changed_when: false
+  check_mode: false
+  register: _ntp_sync
+
+- name: Assert the clock is synchronised
+  ansible.builtin.assert:
+    that: _ntp_sync.stdout | trim == 'yes'
+    fail_msg: "{{ inventory_hostname }} clock is not synchronised - corosync will not tolerate drift."
+    quiet: true
+
+- name: Resolve every other node by name
+  ansible.builtin.command:
+    cmd: getent hosts {{ item }}.{{ pve_domain }}
+  loop: "{{ groups['pve'] | difference([inventory_hostname]) }}"
+  register: _peer_lookup
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert every peer resolves to its inventory address
+  ansible.builtin.assert:
+    that: >-
+      item.rc == 0 and
+      (item.stdout.split() | default([], true) | first | default('')) == hostvars[item.item].ansible_host
+    fail_msg: >-
+      {{ inventory_hostname }} resolves {{ item.item }}.{{ pve_domain }} to
+      '{{ item.stdout | default('nothing') }}', expected
+      {{ hostvars[item.item].ansible_host }}. Corosync resolves peers by name.
+    quiet: true
+  loop: "{{ _peer_lookup.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# --- the destructive check ---------------------------------------------------
+- name: Count guests on this node
+  ansible.builtin.shell: |
+    echo $(( $(qm list 2>/dev/null | tail -n +2 | wc -l) + $(pct list 2>/dev/null | tail -n +2 | wc -l) ))
+  args:
+    executable: /bin/bash
+  register: _guest_count
+  changed_when: false
+  check_mode: false
+  when:
+    - not (pve_is_clustered | bool)
+    - inventory_hostname != pve_cluster_primary
+
+- name: Refuse to join a node that already has guests
+  ansible.builtin.assert:
+    that: _guest_count.stdout | int == 0
+    fail_msg: >-
+      {{ inventory_hostname }} has {{ _guest_count.stdout }} guest(s).
+      `pvecm add` replaces /etc/pve and their configuration would be destroyed.
+      Back them up and remove them first.
+    quiet: true
+  when:
+    - not (pve_is_clustered | bool)
+    - inventory_hostname != pve_cluster_primary
+
+- name: Summarise
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}:
+      {{ "already in cluster '" ~ pve_current_cluster ~ "'" if pve_is_clustered | bool
+         else ("standalone, will CREATE cluster '" ~ pve_cluster_name ~ "'"
+               if inventory_hostname == pve_cluster_primary
+               else "standalone, will JOIN via " ~ hostvars[pve_cluster_primary].ansible_host) }}

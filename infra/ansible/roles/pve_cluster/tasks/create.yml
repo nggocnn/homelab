@@ -1,0 +1,22 @@
+---
+- name: Create the cluster on the primary
+  ansible.builtin.command:
+    cmd: pvecm create {{ pve_cluster_name | quote }} --link0 {{ pve_cluster_link0 }}
+  register: _create
+  changed_when: _create.rc == 0
+
+# A single-node cluster is quorate immediately (1 of 1).
+# Waiting here means the first joiner never races corosync coming up.
+- name: Wait for the new cluster to be quorate
+  ansible.builtin.command:
+    cmd: pvecm status
+  register: _create_quorum
+  until: _create_quorum.stdout is search('Quorate:\s+Yes')
+  retries: 24
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: created cluster '{{ pve_cluster_name }}' on link0 {{ pve_cluster_link0 }}."

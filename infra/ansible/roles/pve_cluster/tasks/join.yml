@@ -1,0 +1,79 @@
+---
+# `pvecm add --use_ssh` runs ssh from this node to the primary as root, so the
+# trust has to exist in both directions before the command is issued.
+
+- name: Look for root's SSH keypair
+  ansible.builtin.stat:
+    path: /root/.ssh/id_rsa.pub
+  register: _root_key
+
+- name: Generate root's SSH keypair if missing
+  ansible.builtin.command:
+    cmd: ssh-keygen -q -t rsa -b 4096 -N '' -C root@{{ inventory_hostname }} -f /root/.ssh/id_rsa
+  when: not _root_key.stat.exists
+
+- name: Read root's public key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_rsa.pub
+  register: _root_pubkey
+
+- name: Authorise this node's root key on the primary
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ _root_pubkey.content | b64decode }}"
+    state: present
+    exclusive: false
+  delegate_to: "{{ pve_cluster_primary }}"
+
+- name: Read the primary's SSH host key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  register: _primary_hostkey
+  delegate_to: "{{ pve_cluster_primary }}"
+
+# Load-bearing, not tidiness. `pvecm add --use_ssh` shells out to ssh-copy-id,
+# which refuses an unknown host key - and pvecm still exits 0, so without this
+# the join silently does nothing and the failure only surfaces later as a node
+# that never appears in the cluster.
+- name: Trust the primary's host key as root
+  ansible.builtin.known_hosts:
+    path: /root/.ssh/known_hosts
+    name: "{{ item }}"
+    key: "{{ item }} {{ _primary_hostkey.content | b64decode | trim | regex_replace('^(\\S+ \\S+).*$', '\\1') }}"
+    state: present
+  loop:
+    - "{{ hostvars[pve_cluster_primary].ansible_host }}"
+    - "{{ pve_cluster_primary }}"
+    - "{{ pve_cluster_primary }}.{{ pve_domain }}"
+
+- name: Join the cluster
+  ansible.builtin.command:
+    cmd: >-
+      pvecm add {{ hostvars[pve_cluster_primary].ansible_host }}
+      --link0 {{ pve_cluster_link0 }} --use_ssh
+  register: _join
+  changed_when: _join.rc == 0
+
+# The join replaces /etc/pve and restarts pveproxy/pvedaemon underneath us.
+- name: Reset the connection after the join
+  ansible.builtin.meta: reset_connection
+
+- name: Wait for this node to report cluster membership
+  ansible.builtin.command:
+    cmd: pvecm status
+  register: _member
+  until: _member.rc == 0 and _member.stdout is search('Quorate:\s+Yes')
+  retries: 30
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+- name: Assert the join landed in the right cluster
+  ansible.builtin.assert:
+    that: _member.stdout is search('(?m)^Name:\s+' ~ pve_cluster_name ~ '$')
+    fail_msg: "{{ inventory_hostname }} joined the wrong cluster."
+    quiet: true
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: joined '{{ pve_cluster_name }}' via {{ hostvars[pve_cluster_primary].ansible_host }}."
