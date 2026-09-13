@@ -1,0 +1,39 @@
+---
+# Phase 0 - form the cluster `pve`, created on pve-01.
+#
+# Run 00-host.yml first: this playbook assumes /etc/hosts, the clocks and the
+# NIC workaround are already in the state that role enforces.
+#
+#   ansible-playbook playbooks/01-cluster.yml
+#
+# Re-running against a formed cluster is a no-op.
+
+# Every check that could make formation a mistake runs first, across all nodes,
+# before anything mutates. `pvecm add` is not reversible.
+- name: Preflight
+  hosts: pve
+  gather_facts: true
+  tasks:
+    - name: Run cluster preflight checks
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: preflight
+
+- name: Form the cluster
+  hosts: pve
+  gather_facts: false
+  # Serial is not a nicety: concurrent `pvecm add` against one primary is unsafe,
+  # and inventory order puts the primary first so the cluster exists before
+  # anyone tries to join it.
+  serial: 1
+  roles:
+    - pve_cluster
+
+- name: Verify from every node
+  hosts: pve
+  gather_facts: false
+  tasks:
+    - name: Run cluster verification
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: verify

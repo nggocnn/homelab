@@ -1,0 +1,23 @@
+---
+# Expects the play to be `serial: 1`. Concurrent `pvecm add` against the same
+# primary is not safe, and each join has to be quorate before the next starts.
+
+- name: Detect current membership
+  ansible.builtin.import_tasks: detect.yml
+
+- name: Create the cluster
+  ansible.builtin.import_tasks: create.yml
+  when:
+    - inventory_hostname == pve_cluster_primary
+    - not (pve_is_clustered | bool)
+
+- name: Join the cluster
+  ansible.builtin.import_tasks: join.yml
+  when:
+    - inventory_hostname != pve_cluster_primary
+    - not (pve_is_clustered | bool)
+
+- name: Report that nothing was needed
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: already in cluster '{{ pve_current_cluster }}' - nothing to do."
+  when: pve_is_clustered | bool
