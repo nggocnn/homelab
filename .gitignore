@@ -4,3 +4,7 @@
 infra/node/root-password.hash
 infra/node/answer-*.toml
 infra/node/*.iso
+
+# Ansible — installed from requirements.yml, not vendored.
+infra/ansible/collections/
+*.retry
