@@ -1,0 +1,44 @@
+---
+# Asked of every node, not just the primary: a node can believe it is a member
+# while the rest of the cluster disagrees, and only asking all of them catches that.
+
+- name: Read the cluster status
+  ansible.builtin.command:
+    cmd: pvecm status
+  register: _status
+  changed_when: false
+  check_mode: false
+
+- name: Assert the cluster is what it should be
+  ansible.builtin.assert:
+    that:
+      - _status.stdout is search('(?m)^Name:\s+' ~ pve_cluster_name ~ '$')
+      - _status.stdout is search('(?m)^Nodes:\s+' ~ (groups['pve'] | length) ~ '$')
+      - _status.stdout is search('Quorate:\s+Yes')
+    fail_msg: >-
+      {{ inventory_hostname }} does not see a healthy {{ groups['pve'] | length }}-node
+      '{{ pve_cluster_name }}'. pvecm status said:
+      {{ _status.stdout }}
+    quiet: true
+
+- name: List the node directories in the cluster filesystem
+  ansible.builtin.find:
+    paths: /etc/pve/nodes
+    file_type: directory
+  register: _node_dirs
+
+- name: Assert every inventory node exists in the cluster filesystem
+  ansible.builtin.assert:
+    that: (_node_dirs.files | map(attribute='path') | map('basename') | sort) == (groups['pve'] | sort)
+    fail_msg: >-
+      /etc/pve/nodes holds
+      {{ _node_dirs.files | map(attribute='path') | map('basename') | sort | join(', ') }},
+      expected {{ groups['pve'] | sort | join(', ') }}
+    quiet: true
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: cluster '{{ pve_cluster_name }}' quorate,
+      {{ groups['pve'] | length }} nodes, HA fencing intentionally off
+      (single NIC, one corosync ring).
