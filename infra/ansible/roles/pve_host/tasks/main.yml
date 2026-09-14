@@ -59,6 +59,11 @@
   ansible.builtin.import_tasks: power.yml
   tags: [power]
 
+- name: Wake-on-LAN
+  ansible.builtin.import_tasks: wol.yml
+  when: pve_wol | bool
+  tags: [wol]
+
 - name: Unattended upgrades
   ansible.builtin.import_tasks: updates.yml
   when: pve_unattended_upgrades | bool

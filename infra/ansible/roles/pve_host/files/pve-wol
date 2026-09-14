@@ -1,0 +1,19 @@
+#!/bin/bash
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+#
+# Arm Wake-on-LAN (magic packet) on every physical NIC that supports it.
+#
+# Check the BIOS: Power > Automatic Power On > Wake on LAN must be enabled in firmware,
+# or the armed NIC is powered down at shutdown and never sees the packet.
+#
+# Interfaces are matched by CAPABILITY, not by name: `Supports Wake-on` is read
+# from the driver, so a rename or a different port never leaves this unapplied.
+# Re-armed on every device add because e1000e resets wol to `d` on a driver reset.
+shopt -s nullglob
+for path in /sys/class/net/*; do
+  ifc=${path##*/}
+  [ -e "$path/device/driver" ] || continue          # skip lo, bridges, veth, taps
+  /usr/sbin/ethtool "$ifc" 2>/dev/null | grep -qE 'Supports Wake-on:.*g' || continue
+  /usr/sbin/ethtool -s "$ifc" wol g &>/dev/null
+  logger -t pve-wol "wake-on-lan armed on $ifc"
+done

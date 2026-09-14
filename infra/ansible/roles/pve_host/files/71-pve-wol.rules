@@ -1,0 +1,3 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+# Re-arm whenever a PCI NIC (re)appears - a driver reset clears wol back to `d`.
+ACTION=="add", SUBSYSTEM=="net", SUBSYSTEMS=="pci", TAG+="systemd", ENV{SYSTEMD_WANTS}+="pve-wol.service"
