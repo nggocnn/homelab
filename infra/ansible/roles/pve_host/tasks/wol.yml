@@ -1,0 +1,138 @@
+---
+# Wake-on-LAN, so a node that is off can be started from a peer:
+#
+#   pvenode wakeonlan pve-02
+#
+# Two halves, and both are needed: the NIC has to be armed (`wol g`) and the
+# node's MAC has to be registered in /etc/pve/nodes/<node>/config, which is
+# where pvenode reads it from. A third half lives in firmware - Power >
+# Automatic Power On > Wake on LAN must be enabled in the BIOS.
+
+- name: Ensure ethtool is installed
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+
+- name: Install the WoL script
+  ansible.builtin.copy:
+    src: pve-wol
+    dest: /usr/local/sbin/pve-wol
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the WoL unit
+  ansible.builtin.copy:
+    src: pve-wol.service
+    dest: /etc/systemd/system/pve-wol.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd
+
+- name: Install the WoL udev rule
+  ansible.builtin.copy:
+    src: 71-pve-wol.rules
+    dest: /etc/udev/rules.d/71-pve-wol.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload udev rules
+
+- name: Flush handlers so the unit is loaded before we enable it
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the WoL unit at boot
+  ansible.builtin.systemd_service:
+    name: pve-wol.service
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Leave the oneshot at rest so udev can re-trigger it
+  ansible.builtin.systemd_service:
+    name: pve-wol.service
+    state: stopped
+  when: not ansible_check_mode
+
+- name: Arm WoL now
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/pve-wol
+  changed_when: false
+  when: not ansible_check_mode
+
+# --- the uplink ---------------------------------------------------------------
+# The magic packet has to be addressed to the physical port, not to the bridge vmbr0,
+# resolve the route to the gateway and then step down through the bridge.
+- name: Resolve the uplink port and its MAC
+  ansible.builtin.shell: |
+    set -o pipefail
+    dev=$(ip -o route get {{ pve_gateway }} | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+    [ -n "$dev" ] || exit 1
+    if [ -d "/sys/class/net/$dev/brif" ]; then
+      dev=$(ls -1 "/sys/class/net/$dev/brif" | head -n1)
+    fi
+    echo "$dev"
+    cat "/sys/class/net/$dev/address"
+  args:
+    executable: /bin/bash
+  register: _wol_uplink
+  changed_when: false
+  check_mode: false
+
+- name: Name the uplink
+  ansible.builtin.set_fact:
+    pve_wol_iface: "{{ _wol_uplink.stdout_lines[0] }}"
+    pve_wol_mac: "{{ _wol_uplink.stdout_lines[1] }}"
+
+- name: Read the node's current Proxmox config
+  ansible.builtin.command:
+    cmd: pvenode config get
+  changed_when: false
+  check_mode: false
+  register: _pvenode_config
+
+- name: Register the uplink MAC with Proxmox
+  ansible.builtin.command:
+    cmd: pvenode config set --wakeonlan {{ pve_wol_mac | quote }}
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - pve_wol_mac | lower not in (_pvenode_config.stdout | lower)
+
+# --- verify -------------------------------------------------------------------
+- name: Read back the WoL state of the uplink
+  ansible.builtin.command:
+    cmd: ethtool {{ pve_wol_iface | quote }}
+  changed_when: false
+  check_mode: false
+  register: _wol_state
+  when: not ansible_check_mode
+
+- name: Assert the uplink is armed for magic packets
+  ansible.builtin.assert:
+    that: "_wol_state.stdout is search('Wake-on: g')"
+    fail_msg: >-
+      {{ pve_wol_iface }} is not armed for Wake-on-LAN
+      ({{ _wol_state.stdout | default('') | regex_search('Wake-on:.*') }}).
+      Either the NIC does not support the magic packet or the BIOS is holding it
+      off - `pvenode wakeonlan {{ inventory_hostname }}` will do nothing.
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Read back the Proxmox node config
+  ansible.builtin.command:
+    cmd: pvenode config get
+  changed_when: false
+  check_mode: false
+  register: _pvenode_config_after
+  when: not ansible_check_mode
+
+- name: Assert the registered MAC is the uplink's
+  ansible.builtin.assert:
+    that: pve_wol_mac | lower in (_pvenode_config_after.stdout | lower)
+    fail_msg: >-
+      /etc/pve/nodes/{{ inventory_hostname }}/config does not carry
+      {{ pve_wol_mac }}, so a peer has no address to send the packet to.
+    quiet: true
+  when: not ansible_check_mode

@@ -1,0 +1,15 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+[Unit]
+Description=Arm Wake-on-LAN on physical NICs
+After=network-pre.target
+Wants=network-pre.target
+Before=networking.service
+
+[Service]
+# No RemainAfterExit, for the same reason as pve-nic-fix: the udev rule restarts
+# this unit when the NIC reappears, and systemd skips a start on an active unit.
+Type=oneshot
+ExecStart=/usr/local/sbin/pve-wol
+
+[Install]
+WantedBy=multi-user.target

@@ -7,6 +7,7 @@ pve_disable_ceph_repo: true
 pve_remove_nag: true
 pve_nic_offload_fix: true
 pve_iommu: true
+pve_wol: true
 pve_unattended_upgrades: true
 pve_do_dist_upgrade: false
 pve_allow_reboot: false          # opt-in: a role default must not reboot a hypervisor

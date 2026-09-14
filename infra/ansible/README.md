@@ -69,6 +69,7 @@ Optional switches:
 | `tuning` | `tuning.yml` | `vm.swappiness=10`, journal capped at 1 G. |
 | `iommu` | `iommu.yml` | `intel_iommu=on iommu=pt` merged into the bootloader **by whole token**, plus the vfio modules. |
 | `power` | `power.yml` | CPU governor `powersave`, asserted afterwards. |
+| `wol` | `wol.yml` | `/usr/local/sbin/pve-wol`, unit and udev rule arming `wol g` on the uplink, and the uplink MAC registered with `pvenode config set --wakeonlan <MAC>` so `pvenode wakeonlan <node>` works from a peer. |
 | `updates` | `updates.yml` | unattended-upgrades, Debian-Security origins only, PVE packages and kernels blacklisted, no automatic reboot. |
 | `reboot` | `reboot.yml` | Reboots only when the running kernel is older than the installed one, or a requested kernel parameter is not yet in `/proc/cmdline`. |
 
