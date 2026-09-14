@@ -37,3 +37,12 @@
       ansible.builtin.include_role:
         name: pve_cluster
         tasks_from: verify
+
+- name: Resource pools
+  hosts: pve_primary
+  gather_facts: false
+  tasks:
+    - name: Converge resource pools
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: pools

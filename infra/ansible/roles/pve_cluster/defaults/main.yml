@@ -5,3 +5,6 @@ pve_cluster_primary: pve-01
 # Corosync ring 0. The P330 Tiny has a single onboard NIC, so corosync shares this link with VM traffic, backups and migrations.
 # There is no second ring until a PCIe NIC exists - which is also why PVE HA fencing stays off.
 pve_cluster_link0: "{{ ansible_host }}"
+
+# [{ id, comment }], created on the primary. See inventory/group_vars/pve.yml.
+pve_pools: []
