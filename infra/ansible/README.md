@@ -93,6 +93,8 @@ node's `/etc/pve`, a node's name is immutable once it is a member.
    it is a member while the rest of the cluster disagrees; only asking all of them catches
    that.
 
+4. **Pools**, on `pve-01` only — each `pve_pools` entry created, or its comment corrected. Never deleted.
+
 The formation authorises the joiner's root key on the primary and adds the primary's host key
 to the joiner's `known_hosts` first. That second step is load-bearing: `pvecm add
 --use_ssh` shells out to `ssh-copy-id`, which refuses an unknown host key — **and `pvecm`

@@ -1,0 +1,30 @@
+---
+# Cluster-wide, so run on the primary only. Additive: a pool dropped from pve_pools is left in place.
+
+- name: Read the existing pools
+  ansible.builtin.command:
+    cmd: pveum pool list --output-format json
+  register: _pools
+  changed_when: false
+  check_mode: false
+
+- name: Index the existing pools by id
+  ansible.builtin.set_fact:
+    _pool_comments: >-
+      {{ dict((_pools.stdout | from_json) | map(attribute='poolid')
+         | zip((_pools.stdout | from_json) | map(attribute='comment', default=''))) }}
+
+- name: Create missing pools
+  ansible.builtin.command:
+    cmd: pveum pool add {{ item.id | quote }} --comment {{ item.comment | quote }}
+  loop: "{{ pve_pools | rejectattr('id', 'in', _pool_comments) | list }}"
+  loop_control:
+    label: "{{ item.id }}"
+
+- name: Correct drifted pool comments
+  ansible.builtin.command:
+    cmd: pveum pool modify {{ item.id | quote }} --comment {{ item.comment | quote }}
+  loop: "{{ pve_pools | selectattr('id', 'in', _pool_comments) | list }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: _pool_comments[item.id] != item.comment

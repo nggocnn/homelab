@@ -10,6 +10,14 @@ ansible_python_interpreter: /usr/bin/python3
 pve_cluster_name: pve
 pve_cluster_primary: "{{ groups['pve_primary'][0] }}"
 
+# Resource pools grouping LXC and VMs, one per guest block (VMID = IP last octet).
+pve_pools:
+  - { id: network,            comment: "10.10.10.100-119 | edge, VPN and DNS" }
+  - { id: access,             comment: "10.10.10.120-139 | entry points: bastion, remote desktop" }
+  - { id: infrastructure,     comment: "10.10.10.140-149 | shared services" }
+  - { id: container-platform, comment: "10.10.10.150-169 | Docker hosts" }
+  - { id: kubernetes-lab,     comment: "10.10.10.170-199 | on-demand Kubernetes lab" }
+
 # --- host convergence -------------------------------------------------------
 # Public keys that may log in as root. Additive: existing keys are never pruned,
 # because pruning the wrong one locks all three nodes out at once.
