@@ -36,12 +36,14 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | --- | --- |
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent — a second run must report `changed=0`. |
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**. No-op once formed. |
+| `playbooks/02-images.yml` | Puts `pve_lxc_templates` and `pve_isos` on every node's `local` storage — downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
 ansible-playbook playbooks/00-host.yml                    # first run
 ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
+ansible-playbook playbooks/02-images.yml
 ```
 
 Optional switches:
@@ -49,6 +51,7 @@ Optional switches:
 ```bash
 -e pve_allow_reboot=false      # never reboot, just warn that one is pending
 -e pve_do_dist_upgrade=true    # apt full-upgrade as part of the run
+-e pve_images_throttle=1       # 02-images: one node transferring at a time
 --tags nic,repos               # one concern at a time
 --limit pve-02                 # one node
 ```

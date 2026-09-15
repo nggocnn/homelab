@@ -1,0 +1,9 @@
+---
+# Phase 0 - LXC templates and ISOs on every node.
+#
+#   ansible-playbook playbooks/02-images.yml
+- name: LXC templates and ISOs
+  hosts: pve
+  gather_facts: false
+  roles:
+    - pve_images
