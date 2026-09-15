@@ -1,0 +1,87 @@
+---
+# `local` is not shared, each node holds its own copy.
+# Only add, a dropped entry is left in place.
+
+- name: Assert every image entry is well-formed
+  ansible.builtin.assert:
+    that:
+      - pve_lxc_templates | reject('string') | rejectattr('name', 'defined') | list | length == 0
+      - pve_lxc_templates | reject('string') | rejectattr('src', 'defined') | list | length == 0
+      - pve_isos | rejectattr('name', 'defined') | list | length == 0
+      - pve_isos | selectattr('url', 'defined') | selectattr('src', 'defined') | list | length == 0
+      - pve_isos | rejectattr('url', 'defined') | rejectattr('src', 'defined') | list | length == 0
+      - pve_isos | selectattr('url', 'defined') | rejectattr('checksum', 'defined') | list | length == 0
+    fail_msg: >-
+      A template is a pveam name or { name, src, checksum? }. An ISO has a name and exactly one of
+      url (with checksum) or src.
+    quiet: true
+  run_once: true
+
+# --- LXC templates ------------------------------------------------------------
+- name: List the LXC templates on {{ pve_images_storage }}
+  ansible.builtin.command:
+    cmd: pveam list {{ pve_images_storage | quote }}
+  register: _templates
+  changed_when: false
+  check_mode: false
+
+- name: Name the missing templates
+  ansible.builtin.set_fact:
+    _missing_templates: "{{ pve_lxc_templates | select('string') | reject('in', _templates.stdout) | list }}"
+
+- name: Refresh the appliance index
+  ansible.builtin.command:
+    cmd: pveam update
+  changed_when: false
+  when: _missing_templates | length > 0
+
+# pveam verifies the download against the index checksum.
+- name: Download missing templates
+  ansible.builtin.command:
+    cmd: pveam download {{ pve_images_storage | quote }} {{ item | quote }}
+  loop: "{{ _missing_templates }}"
+  throttle: "{{ pve_images_throttle }}"
+
+- name: Push local templates
+  ansible.builtin.include_tasks: push.yml
+  vars:
+    _volid: "{{ pve_images_storage }}:vztmpl/{{ _image.name }}"
+  loop: "{{ pve_lxc_templates | reject('string') | list }}"
+  loop_control:
+    loop_var: _image
+    label: "{{ _image.name }}"
+
+# --- ISOs ---------------------------------------------------------------------
+- name: Resolve the ISO paths
+  ansible.builtin.command:
+    cmd: pvesm path {{ (pve_images_storage ~ ':iso/' ~ item.name) | quote }}
+  loop: "{{ pve_isos | selectattr('url', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _iso_paths
+  changed_when: false
+  check_mode: false
+
+# Skipped when the file already matches the checksum. tmp_dest keeps the partial file off the tmpfs /tmp.
+- name: Download ISOs
+  ansible.builtin.get_url:
+    url: "{{ item.item.url }}"
+    dest: "{{ item.stdout }}"
+    checksum: "{{ item.item.checksum }}"
+    tmp_dest: "{{ item.stdout | dirname }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ _iso_paths.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  throttle: "{{ pve_images_throttle }}"
+
+- name: Push local ISOs
+  ansible.builtin.include_tasks: push.yml
+  vars:
+    _volid: "{{ pve_images_storage }}:iso/{{ _image.name }}"
+  loop: "{{ pve_isos | selectattr('src', 'defined') | list }}"
+  loop_control:
+    loop_var: _image
+    label: "{{ _image.name }}"

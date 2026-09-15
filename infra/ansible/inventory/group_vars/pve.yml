@@ -18,6 +18,22 @@ pve_pools:
   - { id: container-platform, comment: "10.10.10.150-169 | Docker hosts" }
   - { id: kubernetes-lab,     comment: "10.10.10.170-199 | on-demand Kubernetes lab" }
 
+# --- images -----------------------------------------------------------------
+# Put on every node: `url`/pveam name downloads on the node, `src` pushes from local machine.
+# Additive: removing an entry deletes nothing.
+pve_images_storage: local
+
+pve_lxc_templates:
+  - debian-13-standard_13.6-1_amd64.tar.zst # pveam available --section system
+  # - name: template.tar.zst
+  #   src: <local_template_path>
+
+pve_isos:
+  - name: ubuntu-24.04.4-live-server-amd64.iso
+    url: https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
+    # src: <local_iso_path>
+    checksum: sha256:e907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433
+
 # --- host convergence -------------------------------------------------------
 # Public keys that may log in as root. Additive: existing keys are never pruned,
 # because pruning the wrong one locks all three nodes out at once.

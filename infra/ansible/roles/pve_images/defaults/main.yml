@@ -1,0 +1,12 @@
+---
+pve_images_storage: local
+
+# Nodes transferring at once, 0 = all. Parallel internet downloads have hung the e1000e NIC.
+pve_images_throttle: 0
+
+# "<pveam template name>" to download, or { name, src, checksum? } to push from the controller.
+pve_lxc_templates: []
+
+# { name, url, checksum } to download, or { name, src, checksum? } to push from the controller.
+# checksum is "<algo>:<hex>"; src is an absolute path on the controller.
+pve_isos: []

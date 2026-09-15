@@ -1,0 +1,40 @@
+---
+# Push one file from the controller to {{ _volid }}. Expects _image = { name, src, checksum? }.
+
+- name: Resolve {{ _volid }}
+  ansible.builtin.command:
+    cmd: pvesm path {{ _volid | quote }}
+  register: _push_path
+  changed_when: false
+  check_mode: false
+
+- name: Stat {{ _image.src }} locally
+  ansible.builtin.stat:
+    path: "{{ _image.src }}"
+    follow: true
+    get_checksum: "{{ _image.checksum is defined }}"
+    checksum_algorithm: "{{ (_image.checksum | default('sha256')).split(':')[0] }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: _local
+
+- name: Assert {{ _image.src }} is a non-empty file matching its checksum
+  ansible.builtin.assert:
+    that:
+      - _local.stat.isreg | default(false)
+      - _local.stat.size | default(0) > 0
+      - _image.checksum is not defined or _local.stat.checksum | lower == _image.checksum.split(':')[1] | lower
+    fail_msg: "{{ _image.src }} is missing, empty or does not match {{ _image.checksum | default('') }}"
+    quiet: true
+  run_once: true
+
+# Skipped when the node's copy already matches.
+- name: Push {{ _image.name }}
+  ansible.builtin.copy:
+    src: "{{ _image.src }}"
+    dest: "{{ _push_path.stdout }}"
+    owner: root
+    group: root
+    mode: "0644"
+  throttle: "{{ pve_images_throttle }}"
