@@ -1,0 +1,18 @@
+---
+# Phase 1 - create the `lxc` inventory hosts on their lxc_node, then the guest SSH baseline.
+#
+# Run 01-cluster.yml (pools) and 02-images.yml (template) first.
+#
+#   ansible-playbook playbooks/03-lxc.yml
+#   ansible-playbook playbooks/03-lxc.yml --limit tailscale-01
+- name: LXC containers
+  hosts: lxc
+  gather_facts: false
+  roles:
+    - pve_lxc
+
+- name: Guest SSH baseline
+  hosts: lxc
+  gather_facts: false
+  roles:
+    - guest_ssh

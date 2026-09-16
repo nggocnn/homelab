@@ -1,0 +1,6 @@
+---
+# Restart, not reload: with ssh.socket holding :22, a SIGHUP re-exec cannot bind and sshd exits.
+- name: restart sshd
+  ansible.builtin.service:
+    name: ssh
+    state: restarted

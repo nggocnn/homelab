@@ -1,0 +1,25 @@
+---
+# Per host in inventory: ansible_host and lxc_node. VMID = last octet of ansible_host.
+lxc_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
+lxc_vmid: "{{ lxc_ip.split('.')[-1] | int }}"
+lxc_prefix: "{{ pve_subnet_cidr.split('/')[1] }}"
+
+# Proxmox OUI + VMID, so a rebuilt container keeps its MAC.
+lxc_hwaddr: "{{ 'BC:24:11:00:%02X:%02X' | format(lxc_vmid | int // 256, lxc_vmid | int % 256) }}"
+
+lxc_template: local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst
+lxc_storage: local-lvm
+lxc_disk_gb: 4
+lxc_cores: 1
+lxc_memory_mb: 512
+lxc_bridge: vmbr0
+lxc_gateway: "{{ pve_gateway }}"
+lxc_nameserver: "{{ pve_gateway }}"
+lxc_features: nesting=1
+lxc_pool: ""
+
+# Host device paths passed through, e.g. [/dev/net/tun].
+lxc_devices: []
+
+# Authorised for root inside the container.
+lxc_root_authorized_keys: []
