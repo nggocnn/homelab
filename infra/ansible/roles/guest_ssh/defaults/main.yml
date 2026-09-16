@@ -1,0 +1,7 @@
+---
+# Authorised for root. Additive, never pruned.
+guest_ssh_root_authorized_keys: []
+
+# sshd drop-in from files/. false removes it.
+guest_ssh_harden: true
+guest_ssh_config: guest.conf

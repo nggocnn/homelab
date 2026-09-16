@@ -1,0 +1,82 @@
+---
+# Create-only: a VMID that already exists anywhere in the cluster is left as it is.
+# Tasks run on the node or the controller, never inside the container.
+
+- name: List the cluster's guests
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/resources --type vm --output-format json
+  delegate_to: "{{ lxc_node }}"
+  register: _guests
+  changed_when: false
+  check_mode: false
+
+- name: Find VMID {{ lxc_vmid }}
+  ansible.builtin.set_fact:
+    _ct: "{{ _guests.stdout | from_json | selectattr('vmid', 'equalto', lxc_vmid | int) | first | default({}) }}"
+
+- name: Assert VMID {{ lxc_vmid }} is free or already {{ inventory_hostname }}
+  ansible.builtin.assert:
+    that: _ct | length == 0 or (_ct.type == 'lxc' and _ct.name == inventory_hostname)
+    fail_msg: "VMID {{ lxc_vmid }} is taken by {{ _ct.type | default('') }} '{{ _ct.name | default('') }}'."
+    quiet: true
+
+- name: Create {{ inventory_hostname }} on {{ lxc_node }}
+  when: _ct | length == 0
+  delegate_to: "{{ lxc_node }}"
+  block:
+    - name: Stage the SSH public keys
+      ansible.builtin.copy:
+        dest: /tmp/lxc-{{ lxc_vmid }}.pub
+        content: "{{ lxc_root_authorized_keys | join('\n') }}\n"
+        mode: "0600"
+
+    - name: Create and start the container
+      ansible.builtin.command:
+        cmd: >-
+          pct create {{ lxc_vmid }} {{ lxc_template }}
+          --hostname {{ inventory_hostname }}
+          --unprivileged 1
+          --features {{ lxc_features }}
+          --cores {{ lxc_cores }}
+          --memory {{ lxc_memory_mb }}
+          --rootfs {{ lxc_storage }}:{{ lxc_disk_gb }}
+          --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }}/{{ lxc_prefix }},gw={{ lxc_gateway }},hwaddr={{ lxc_hwaddr }}
+          --nameserver {{ lxc_nameserver }}
+          {% if lxc_pool %}--pool {{ lxc_pool }}{% endif %}
+          {% for dev in lxc_devices %}--dev{{ loop.index0 }} {{ dev }} {% endfor %}
+          --ssh-public-keys /tmp/lxc-{{ lxc_vmid }}.pub
+          --onboot 1
+          --start 1
+      register: _create
+  always:
+    - name: Remove the staged keys
+      ansible.builtin.file:
+        path: /tmp/lxc-{{ lxc_vmid }}.pub
+        state: absent
+
+# host_key_checking is on, so later playbooks need the key. Read through the hypervisor, not over the wire.
+- name: Trust the SSH host key of {{ inventory_hostname }}
+  when: _create is changed or _ct.status | default('') == 'running'
+  block:
+    - name: Wait for SSH
+      ansible.builtin.wait_for:
+        host: "{{ lxc_ip }}"
+        port: 22
+        timeout: 120
+      delegate_to: localhost
+
+    - name: Read the host key
+      ansible.builtin.command:
+        cmd: pct exec {{ lxc_vmid }} -- cat /etc/ssh/ssh_host_ed25519_key.pub
+      delegate_to: "{{ _ct.node | default(lxc_node) }}"
+      register: _hostkey
+      changed_when: false
+      check_mode: false
+
+    - name: Add it to the controller's known_hosts
+      ansible.builtin.known_hosts:
+        name: "{{ lxc_ip }}"
+        key: "{{ lxc_ip }} {{ _hostkey.stdout | trim | regex_replace('^(\\S+ \\S+).*$', '\\1') }}"
+        state: present
+      delegate_to: localhost
+      throttle: 1 # one file on the controller, parallel writes drop entries
