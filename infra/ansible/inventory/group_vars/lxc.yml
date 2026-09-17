@@ -14,3 +14,9 @@ guest_ssh_root_authorized_keys: "{{ lxc_root_authorized_keys }}"
 # --- container ----------------------------------------------------------------
 # Sizing and network defaults: roles/pve_lxc/defaults/main.yml.
 lxc_pool: network
+
+# --- packages -----------------------------------------------------------------
+# Every container. Extras per play with apt_packages.
+apt_packages_base:
+  - ca-certificates
+  - curl
