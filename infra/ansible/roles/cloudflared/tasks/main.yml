@@ -1,0 +1,44 @@
+---
+# Install only. The tunnel is wired by hand: cloudflared service install <token>
+
+- name: Install ca-certificates
+  ansible.builtin.apt:
+    name: ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install the Cloudflare package signing key
+  ansible.builtin.get_url:
+    url: https://pkg.cloudflare.com/cloudflare-public-v2.gpg
+    dest: /usr/share/keyrings/cloudflare-public-v2.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the cloudflared apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/cloudflared.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main
+
+# update_cache on the install itself, so a run that died after adding the repo still sees the package.
+- name: Install cloudflared
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+    update_cache: true
+
+- name: Read the installed version
+  ansible.builtin.command:
+    cmd: cloudflared --version
+  register: _cf_version
+  changed_when: false
+  check_mode: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ _cf_version.stdout }}"
