@@ -1,0 +1,29 @@
+---
+# Refresh the cache, install base plus extras, optionally upgrade. Never reboots.
+
+- name: Refresh the apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ (apt_packages_base + apt_packages) | unique }}"
+    state: present
+  when: (apt_packages_base + apt_packages) | length > 0
+
+- name: Upgrade packages
+  ansible.builtin.apt:
+    upgrade: "{{ apt_upgrade_mode }}"
+    autoremove: true
+  when: apt_upgrade | bool
+
+- name: Check whether a reboot is required
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _apt_reboot
+
+- name: Warn about a pending reboot
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: reboot required"
+  when: _apt_reboot.stat.exists
