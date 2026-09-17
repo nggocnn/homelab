@@ -38,6 +38,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**. No-op once formed. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates` and `pve_isos` on every node's `local` storage — downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
 | `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
+| `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -46,6 +47,7 @@ ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/03-lxc.yml
+ansible-playbook playbooks/10-cloudflared.yml
 ```
 
 Optional switches:
