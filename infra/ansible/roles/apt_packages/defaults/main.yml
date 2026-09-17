@@ -1,0 +1,8 @@
+---
+# Installed, never removed. Base from group_vars, extras per play.
+apt_packages_base: []
+apt_packages: []
+
+# Opt in with -e apt_upgrade=true. Mode: safe, full or dist.
+apt_upgrade: false
+apt_upgrade_mode: dist
