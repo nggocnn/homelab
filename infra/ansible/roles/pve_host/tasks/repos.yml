@@ -67,6 +67,7 @@
     update_cache: true
     cache_valid_time: 3600
 
+# TODO: after cloudflared is done, switch this to the shared apt_packages role.
 - name: Run a full distribution upgrade
   ansible.builtin.apt:
     upgrade: dist
