@@ -12,7 +12,7 @@
     - not (pve_is_clustered | bool)
 
 - name: Join the cluster
-  ansible.builtin.import_tasks: join.yml
+  ansible.builtin.include_tasks: join.yml
   when:
     - inventory_hostname != pve_cluster_primary
     - not (pve_is_clustered | bool)
