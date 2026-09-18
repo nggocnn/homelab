@@ -1,0 +1,4 @@
+---
+# Subnets advertised once logged in. Approve them in the admin console. [] withdraws.
+tailscale_advertise_routes:
+  - "{{ pve_subnet_cidr }}"

@@ -1,0 +1,9 @@
+---
+# Install Tailscale and advertise the subnet. Log in by hand with `tailscale up`, then re-run.
+#
+#   ansible-playbook playbooks/11-tailscale.yml
+- name: Install Tailscale
+  hosts: tailscale
+  gather_facts: false
+  roles:
+    - tailscale
