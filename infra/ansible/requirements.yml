@@ -4,5 +4,6 @@
 # the Phase 0 playbooks; the others are here for the guest phases that follow.
 collections:
   - name: ansible.posix        # authorized_key, sysctl
+    version: ">=2.2.2"         # apt ships 2.1.0: to_native deprecation warning
   - name: community.general
   - name: community.proxmox    # guests, pools, API tokens (Phase 1+)
