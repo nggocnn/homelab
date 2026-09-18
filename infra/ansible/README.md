@@ -17,14 +17,11 @@ So `pve_host` re-asserts all of it, every run, converging on **the same paths an
 ```bash
 sudo apt install -y ansible               # 13.1.0: ansible-core 2.20.1 + bundled collections
 cd infra/ansible
-ansible-galaxy collection list | grep -E 'ansible.posix|community.(general|proxmox)'
+ansible-galaxy collection install -r requirements.yml   # into ./collections (gitignored)
 ansible pve -m ping                       # expect 3 × SUCCESS
 ```
 
-The `ansible` metapackage already carries `ansible.posix`, `community.general` and `community.proxmox`,
-so nothing needs installing from Galaxy. Install bare `ansible-core` instead and it ships no collections
-at all — then `ansible-galaxy collection install -r requirements.yml` fills the gap, into `./collections`
-(set by `ansible.cfg`, gitignored).
+`requirements.yml` pins `ansible.posix >= 2.2.2`. The apt package's 2.1.0 prints a `to_native` deprecation warning.
 
 Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH with `~/.ssh/<key>`.
 
