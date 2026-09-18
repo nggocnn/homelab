@@ -1,5 +1,9 @@
 ---
+# Base set and the opt-in dist upgrade, through the shared role.
 - name: Install the base package set
-  ansible.builtin.apt:
-    name: "{{ pve_packages }}"
-    state: present
+  ansible.builtin.include_role:
+    name: apt_packages
+  vars:
+    apt_packages_base: "{{ pve_packages }}"
+    apt_upgrade: "{{ pve_do_dist_upgrade }}"
+    apt_upgrade_mode: dist
