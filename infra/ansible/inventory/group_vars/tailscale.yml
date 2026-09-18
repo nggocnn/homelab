@@ -1,0 +1,3 @@
+---
+lxc_devices:
+  - /dev/net/tun
