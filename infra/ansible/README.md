@@ -37,6 +37,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
 | `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | Installs Tailscale on `tailscale-01` and advertises `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). |
+| `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -47,6 +48,8 @@ ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/03-lxc.yml
 ansible-playbook playbooks/10-cloudflared.yml
 ansible-playbook playbooks/11-tailscale.yml
+mkpasswd -m yescrypt > bastion-password.hash              # bastion user's password, gitignored
+ansible-playbook playbooks/12-bastion.yml
 ```
 
 Optional switches:
@@ -66,7 +69,7 @@ Optional switches:
 | Tag | File | Enforced state |
 | --- | --- | --- |
 | `repos` | `repos.yml` | `pve-enterprise` and `ceph` disabled, `pve-no-subscription` enabled. |
-| `packages` | `packages.yml` | The same package set `first-boot.sh` installs. |
+| `packages` | `packages.yml` | The same package set `first-boot.sh` installs, through the shared `apt_packages` role. |
 | `nic` | `nic.yml` | `/usr/local/sbin/pve-nic-fix`, unit and udev rule. Interfaces are matched **by driver**, never by name. Asserts TSO/GSO/GRO `off` and EEE disabled afterwards. |
 | `nag` | `nag.yml` | The `orig_checked_command` patch plus the APT `Post-Invoke` hook that reapplies it after every upgrade. |
 | `hosts` | `hostsfile.yml` | `/etc/hosts` templated with all three nodes; asserts `hostname -f`. |

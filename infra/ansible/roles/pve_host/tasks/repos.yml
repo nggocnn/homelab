@@ -61,15 +61,3 @@
 
 - name: Flush handlers so the apt cache is refreshed before anything installs
   ansible.builtin.meta: flush_handlers
-
-- name: Refresh the apt cache
-  ansible.builtin.apt:
-    update_cache: true
-    cache_valid_time: 3600
-
-# TODO: after cloudflared is done, switch this to the shared apt_packages role.
-- name: Run a full distribution upgrade
-  ansible.builtin.apt:
-    upgrade: dist
-    autoremove: true
-  when: pve_do_dist_upgrade | bool
