@@ -1,13 +1,6 @@
 ---
 # Install and subnet routing. Logged in by hand: tailscale up
 
-- name: Install ca-certificates
-  ansible.builtin.apt:
-    name: ca-certificates
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-
 - name: Install the Tailscale package signing key
   ansible.builtin.get_url:
     url: https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg

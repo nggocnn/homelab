@@ -6,4 +6,5 @@
   hosts: tailscale
   gather_facts: false
   roles:
+    - apt_packages
     - tailscale
