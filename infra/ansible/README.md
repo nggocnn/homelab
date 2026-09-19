@@ -16,6 +16,7 @@ So `pve_host` re-asserts all of it, every run, converging on **the same paths an
 
 ```bash
 sudo apt install -y ansible               # 13.1.0: ansible-core 2.20.1 + bundled collections
+sudo apt install -y python3-paramiko      # the bastion's proxmox_pct_remote connection needs it
 cd infra/ansible
 ansible-galaxy collection install -r requirements.yml   # into ./collections (gitignored)
 ansible pve -m ping                       # expect 3 × SUCCESS
@@ -37,7 +38,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
 | `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | Installs Tailscale on `tailscale-01` and advertises `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). |
-| `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. |
+| `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container — `pve_lxc` seeds root's keys at create time only. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first

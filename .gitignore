@@ -8,3 +8,6 @@ infra/node/*.iso
 # Ansible — installed from requirements.yml, not vendored.
 infra/ansible/collections/
 *.retry
+
+# Bastion user password hash (mkpasswd -m yescrypt) — generated locally, never committed.
+infra/ansible/bastion-password.hash
