@@ -1,0 +1,12 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+# Containers only, no nodes.
+{% for host in groups['lxc'] | reject('equalto', inventory_hostname) %}
+Host {{ host }}
+    HostName {{ hostvars[host].ansible_host }}
+    User root
+
+{% endfor %}
+Host *
+    IdentityFile {{ bastion_identity_file }}
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new

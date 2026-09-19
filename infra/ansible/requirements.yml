@@ -7,3 +7,4 @@ collections:
     version: ">=2.2.2"         # apt ships 2.1.0: to_native deprecation warning
   - name: community.general
   - name: community.proxmox    # guests, pools, API tokens (Phase 1+)
+  - name: community.crypto     # openssh_keypair (bastion)

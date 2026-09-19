@@ -1,0 +1,22 @@
+---
+# Gate to the containers: nggocnn with a password (console, sudo) and a key (SSH).
+# Re-run after adding a container so the bastion key is authorised on it.
+#
+#   mkpasswd -m yescrypt > bastion-password.hash
+#   ansible-playbook playbooks/12-bastion.yml
+- name: Bastion
+  hosts: bastion
+  gather_facts: false
+  roles:
+    - bastion
+
+- name: Authorise the bastion on the containers
+  hosts: lxc
+  gather_facts: false
+  tasks:
+    - name: Authorise the bastion key for root
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ hostvars[groups['bastion'][0]].bastion_public_key }}"
+        state: present
+        exclusive: false

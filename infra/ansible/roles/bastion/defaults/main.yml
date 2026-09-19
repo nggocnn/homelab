@@ -1,0 +1,8 @@
+---
+# Console login with password, then SSH to containers. SSH itself stays key-only (guest_ssh_harden).
+bastion_user: nggocnn
+bastion_password_hash_file: "{{ playbook_dir }}/../bastion-password.hash" # mkpasswd -m yescrypt, gitignored
+
+# Generated on the bastion, authorised on the containers by 12-bastion.yml.
+# Never the node key, so the bastion cannot reach a node shell.
+bastion_identity_file: /home/{{ bastion_user }}/.ssh/id_lxc

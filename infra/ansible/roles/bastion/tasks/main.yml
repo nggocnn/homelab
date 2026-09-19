@@ -1,0 +1,72 @@
+---
+- name: Read the password hash
+  ansible.builtin.set_fact:
+    _password_hash: "{{ lookup('ansible.builtin.file', bastion_password_hash_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password hash exists
+  ansible.builtin.assert:
+    that: _password_hash is match('^\$')
+    fail_msg: "Missing {{ bastion_password_hash_file | realpath }} - create it with: mkpasswd -m yescrypt > bastion-password.hash"
+    quiet: true
+
+- name: Install sudo and openssh-client
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - openssh-client # ssh-keygen, used by openssh_keypair
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create {{ bastion_user }}
+  ansible.builtin.user:
+    name: "{{ bastion_user }}"
+    password: "{{ _password_hash }}"
+    update_password: always
+    shell: /bin/bash
+    groups: sudo
+    append: true
+  no_log: true
+
+- name: Create /home/{{ bastion_user }}/.ssh
+  ansible.builtin.file:
+    path: /home/{{ bastion_user }}/.ssh
+    state: directory
+    owner: "{{ bastion_user }}"
+    group: "{{ bastion_user }}"
+    mode: "0700"
+
+- name: Authorise SSH keys for {{ bastion_user }}
+  ansible.posix.authorized_key:
+    user: "{{ bastion_user }}"
+    key: "{{ item }}"
+    state: present
+    exclusive: false
+  loop: "{{ bastion_authorized_keys }}"
+  loop_control:
+    label: "{{ item.split() | last }}"
+
+- name: Write ~/.ssh/config
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: /home/{{ bastion_user }}/.ssh/config
+    owner: "{{ bastion_user }}"
+    group: "{{ bastion_user }}"
+    mode: "0600"
+
+# Created once, then left alone. 12-bastion.yml authorises the public half on the containers.
+- name: Generate the container key
+  community.crypto.openssh_keypair:
+    path: "{{ bastion_identity_file }}"
+    type: ed25519
+    comment: "{{ bastion_user }}@{{ inventory_hostname }}"
+    owner: "{{ bastion_user }}"
+    group: "{{ bastion_user }}"
+    mode: "0600"
+    regenerate: never
+  register: _keypair
+
+- name: Publish the public key to the play
+  ansible.builtin.set_fact:
+    bastion_public_key: "{{ _keypair.public_key }} {{ bastion_user }}@{{ inventory_hostname }}"
