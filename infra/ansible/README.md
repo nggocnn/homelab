@@ -73,6 +73,18 @@ approve in the admin console. Unset, the role behaves exactly as before.
 -e tailscale_approve_routes=false       # advertise only, approve by hand
 ```
 
+Drain a router before rebooting its node: withdrawing the route hands over with **no packet
+loss**, where losing the container costs ~17 s either way (measured, hard stop and graceful
+shutdown alike — tailscaled exiting is not a logout, so the coordination server waits for
+the keepalive to lapse).
+
+```bash
+# Detached: the command reaches the router through the route it is withdrawing.
+ansible tailscale-03 -m shell -a 'nohup sh -c "sleep 3; tailscale set --advertise-routes=" >/dev/null 2>&1 &'
+# ... reboot pve-03 ...
+ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertises; approval persists
+```
+
 ---
 
 ## What `pve_host` owns
