@@ -53,9 +53,10 @@
       net.ipv6.conf.all.forwarding=1
   register: _ts_sysctl
 
+# Only this file: `sysctl --system` also applies host-only keys and exits 1 in an unprivileged LXC.
 - name: Apply IP forwarding now
   ansible.builtin.command:
-    cmd: sysctl --system
+    cmd: sysctl -p /etc/sysctl.d/99-tailscale.conf
   changed_when: false
   when:
     - _ts_sysctl.changed
@@ -83,3 +84,11 @@
   when:
     - (_ts_status.stdout | from_json).BackendState == 'Running'
     - ((_ts_prefs.stdout | from_json).AdvertiseRoutes or []) | sort != tailscale_advertise_routes | sort
+
+# Reverting to false restores the resolv.conf tailscaled backed up at login.
+- name: Set DNS acceptance
+  ansible.builtin.command:
+    cmd: tailscale set --accept-dns={{ tailscale_accept_dns | ternary('true', 'false') }}
+  when:
+    - (_ts_status.stdout | from_json).BackendState == 'Running'
+    - (_ts_prefs.stdout | from_json).CorpDNS != (tailscale_accept_dns | bool)

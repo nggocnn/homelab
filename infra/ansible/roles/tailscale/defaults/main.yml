@@ -2,3 +2,7 @@
 # Subnets advertised once logged in. Approve them in the admin console. [] withdraws.
 tailscale_advertise_routes:
   - "{{ pve_subnet_cidr }}"
+
+# false: tailscaled leaves /etc/resolv.conf to pve_lxc's lxc_nameserver, so no tailnet
+# nameserver can override it and make a router depend on a guest for DNS.
+tailscale_accept_dns: false
