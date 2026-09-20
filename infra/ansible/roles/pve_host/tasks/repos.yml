@@ -6,7 +6,7 @@
 # real drift behind permanent noise.
 #
 # The enterprise entries are disabled in place rather than deleted: a PVE upgrade
-# that ships the file again finds it already present and leaves our Enabled:false.
+# that ships the file again finds it already present and leaves the Enabled:false.
 
 - name: Disable the pve-enterprise repository
   ansible.builtin.copy:

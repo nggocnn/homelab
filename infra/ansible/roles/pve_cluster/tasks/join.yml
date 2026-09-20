@@ -54,7 +54,7 @@
   register: _join
   changed_when: _join.rc == 0
 
-# The join replaces /etc/pve and restarts pveproxy/pvedaemon underneath us.
+# The join replaces /etc/pve and restarts pveproxy/pvedaemon underneath the connection.
 - name: Reset the connection after the join
   ansible.builtin.meta: reset_connection
 

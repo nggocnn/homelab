@@ -35,7 +35,7 @@
     mode: "0644"
   notify: reload udev rules
 
-- name: Flush handlers so the unit is loaded before we enable it
+- name: Flush handlers so the unit is loaded before enabling it
   ansible.builtin.meta: flush_handlers
 
 - name: Enable the NIC fix at boot

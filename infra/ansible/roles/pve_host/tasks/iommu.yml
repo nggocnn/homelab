@@ -1,6 +1,6 @@
 ---
 # Kernel command line, merged by whole token.
-- name: Compute the kernel parameter keys we own
+- name: Compute the managed kernel parameter keys
   ansible.builtin.set_fact:
     _pve_param_re: "^({{ pve_kernel_params | map('regex_replace', '=.*$', '') | join('|') }})(=|$)"
 
@@ -16,7 +16,7 @@
   register: _sdboot_raw
   when: _systemd_boot.stat.exists
 
-- name: Merge our parameters into the systemd-boot command line
+- name: Merge the managed parameters into the systemd-boot command line
   ansible.builtin.copy:
     dest: /etc/kernel/cmdline
     owner: root
@@ -35,7 +35,7 @@
   register: _grub_raw
   when: not _systemd_boot.stat.exists
 
-- name: Merge our parameters into GRUB_CMDLINE_LINUX_DEFAULT
+- name: Merge the managed parameters into GRUB_CMDLINE_LINUX_DEFAULT
   ansible.builtin.lineinfile:
     path: /etc/default/grub
     regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
