@@ -1,0 +1,54 @@
+---
+# Advertising a route only offers it; until it is approved the subnet stays unreachable
+# and nothing reports an error. This approves the device's own routes over the API.
+# no_log everywhere: the uri module echoes its headers, and they carry the token.
+
+- name: List the tailnet's devices
+  ansible.builtin.uri:
+    url: "{{ tailscale_api_url }}/tailnet/{{ tailscale_tailnet }}/devices"
+    headers:
+      Authorization: Bearer {{ tailscale_api_key }}
+    status_code: 200
+  delegate_to: localhost
+  register: _ts_devices
+  no_log: true
+  check_mode: false
+
+- name: Find this device
+  ansible.builtin.set_fact:
+    _ts_device_id: >-
+      {{ _ts_devices.json.devices
+         | selectattr('hostname', 'equalto', inventory_hostname)
+         | map(attribute='id') | first | default('') }}
+
+- name: Assert it is registered
+  ansible.builtin.assert:
+    that: _ts_device_id | length > 0
+    fail_msg: "{{ inventory_hostname }} is not in the tailnet - log it in first."
+    quiet: true
+
+- name: Read its approved routes
+  ansible.builtin.uri:
+    url: "{{ tailscale_api_url }}/device/{{ _ts_device_id }}/routes"
+    headers:
+      Authorization: Bearer {{ tailscale_api_key }}
+    status_code: 200
+  delegate_to: localhost
+  register: _ts_routes
+  no_log: true
+  check_mode: false
+
+# Union, not replacement: a route approved elsewhere is somebody's working path.
+- name: Approve the advertised routes
+  ansible.builtin.uri:
+    url: "{{ tailscale_api_url }}/device/{{ _ts_device_id }}/routes"
+    method: POST
+    headers:
+      Authorization: Bearer {{ tailscale_api_key }}
+    body_format: json
+    body:
+      routes: "{{ (_ts_routes.json.enabledRoutes | default([])) | union(tailscale_advertise_routes) }}"
+    status_code: 200
+  delegate_to: localhost
+  no_log: true
+  when: tailscale_advertise_routes | difference(_ts_routes.json.enabledRoutes | default([])) | length > 0

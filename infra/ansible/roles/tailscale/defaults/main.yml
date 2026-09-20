@@ -6,3 +6,19 @@ tailscale_advertise_routes:
 # false: tailscaled leaves /etc/resolv.conf to pve_lxc's lxc_nameserver, so no tailnet
 # nameserver can override it and make a router depend on a guest for DNS.
 tailscale_accept_dns: false
+
+# --- API ---------------------------------------------------------------------
+# Read from the controller's environment: export TS_API_KEY=tskey-api-...
+# Unset disables everything below, so the role still works with the console by hand.
+# The token stays on the controller - it is never written to disk or sent to a container.
+tailscale_api_key: "{{ lookup('env', 'TS_API_KEY') }}"
+tailscale_api_url: https://api.tailscale.com/api/v2
+tailscale_tailnet: "-" # "-" means the token's own tailnet
+
+# Approve this device's advertised routes over the API instead of clicking in the console.
+tailscale_approve_routes: true
+
+# Log in unattended with a single-use key minted over the API, instead of `tailscale up`.
+tailscale_login_with_authkey: false
+tailscale_authkey_expiry_seconds: 300
+tailscale_authkey_tags: []

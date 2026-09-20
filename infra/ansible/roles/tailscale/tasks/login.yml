@@ -1,0 +1,53 @@
+---
+# Unattended login. The API token never leaves the controller; the key it mints is
+# single-use, short-lived, and reaches the container as a 0600 file rather than argv,
+# where every process in the container could read it off `ps`.
+
+- name: Mint a single-use auth key
+  ansible.builtin.uri:
+    url: "{{ tailscale_api_url }}/tailnet/{{ tailscale_tailnet }}/keys"
+    method: POST
+    headers:
+      Authorization: Bearer {{ tailscale_api_key }}
+    body_format: json
+    body:
+      description: ansible {{ inventory_hostname }}
+      expirySeconds: "{{ tailscale_authkey_expiry_seconds | int }}"
+      capabilities:
+        devices:
+          create: >-
+            {{ {'reusable': false, 'ephemeral': false, 'preauthorized': true}
+               | combine({'tags': tailscale_authkey_tags} if tailscale_authkey_tags else {}) }}
+    status_code: 200
+  delegate_to: localhost
+  register: _ts_key
+  no_log: true
+
+- name: Log in with the minted key
+  block:
+    - name: Stage the auth key
+      ansible.builtin.copy:
+        dest: /run/tailscale-authkey
+        content: "{{ _ts_key.json.key }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Run tailscale up
+      ansible.builtin.command:
+        cmd: tailscale up --auth-key=file:/run/tailscale-authkey --hostname={{ inventory_hostname }}
+      changed_when: true
+  always:
+    - name: Remove the staged auth key
+      ansible.builtin.file:
+        path: /run/tailscale-authkey
+        state: absent
+
+- name: Re-read the backend state
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: _ts_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
