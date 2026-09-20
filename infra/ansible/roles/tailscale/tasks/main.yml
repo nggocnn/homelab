@@ -62,19 +62,27 @@
     - _ts_sysctl.changed
     - not ansible_check_mode
 
-- name: Read the Tailscale state
-  ansible.builtin.command:
-    cmd: tailscale debug prefs
-  register: _ts_prefs
-  changed_when: false
-  check_mode: false
-
 - name: Read the Tailscale backend state
   ansible.builtin.command:
     cmd: tailscale status --json
   register: _ts_status
   changed_when: false
   failed_when: false
+  check_mode: false
+
+# Replaces the manual `tailscale up`. Skipped unless a token is exported and it is asked for.
+- name: Log in with an API-minted auth key
+  ansible.builtin.include_tasks: login.yml
+  when:
+    - tailscale_login_with_authkey | bool
+    - tailscale_api_key | length > 0
+    - (_ts_status.stdout | default('{}') | from_json).BackendState | default('') != 'Running'
+
+- name: Read the Tailscale state
+  ansible.builtin.command:
+    cmd: tailscale debug prefs
+  register: _ts_prefs
+  changed_when: false
   check_mode: false
 
 # Skipped until logged in; re-run the playbook after `tailscale up`.
@@ -92,3 +100,10 @@
   when:
     - (_ts_status.stdout | from_json).BackendState == 'Running'
     - (_ts_prefs.stdout | from_json).CorpDNS != (tailscale_accept_dns | bool)
+
+- name: Approve the advertised routes over the API
+  ansible.builtin.include_tasks: routes.yml
+  when:
+    - tailscale_approve_routes | bool
+    - tailscale_api_key | length > 0
+    - (_ts_status.stdout | default('{}') | from_json).BackendState | default('') == 'Running'

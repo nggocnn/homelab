@@ -4,6 +4,9 @@
 #
 #   tailscale up          # routes and accept-dns are reconciled by the role afterwards
 #
+# With TS_API_KEY exported the role approves the routes too, and
+# -e tailscale_login_with_authkey=true replaces the manual login entirely.
+#
 #   ansible-playbook playbooks/11-tailscale.yml
 - name: Install Tailscale
   hosts: tailscale

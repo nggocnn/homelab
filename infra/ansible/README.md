@@ -48,6 +48,7 @@ ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/03-lxc.yml
 ansible-playbook playbooks/10-cloudflared.yml
+export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
 mkpasswd -m yescrypt > bastion-password.hash              # bastion user's password, gitignored
 ansible-playbook playbooks/12-bastion.yml
@@ -61,6 +62,15 @@ Optional switches:
 -e pve_images_throttle=1       # 02-images: one node transferring at a time
 --tags nic,repos               # one concern at a time
 --limit pve-02                 # one node
+```
+
+`TS_API_KEY` (a Tailscale API token, read from the environment and never written to disk)
+lets `11-tailscale.yml` approve each router's own subnet routes instead of you clicking
+approve in the admin console. Unset, the role behaves exactly as before.
+
+```bash
+-e tailscale_login_with_authkey=true    # also mint a single-use key and log in, no `tailscale up`
+-e tailscale_approve_routes=false       # advertise only, approve by hand
 ```
 
 ---
