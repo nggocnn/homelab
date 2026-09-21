@@ -86,6 +86,7 @@ pve_repo_host: sg.cdn.proxmox.com
 
 pve_disable_ceph_repo: true      # not using Ceph
 pve_remove_nag: true
+pve_web_title: "{{ pve_cluster_name }}"   # the tab says `pve`, not whichever node the VIP landed on
 pve_nic_offload_fix: true        # I219-LM e1000e hang workaround
 pve_iommu: true
 pve_wol: true                    # `pvenode wakeonlan <node>` from a peer

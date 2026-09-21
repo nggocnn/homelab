@@ -1,0 +1,54 @@
+---
+# The tab reads "<node> - Proxmox Virtual Environment", which behind pve_vip is whichever
+# node answered. Same drift as the subscription nag: a vendor file, restored on upgrade.
+
+- name: Assert the title is safe to substitute
+  ansible.builtin.assert:
+    that: pve_web_title is match('^[A-Za-z0-9 ._-]+$')
+    fail_msg: >-
+      pve_web_title ({{ pve_web_title }}) has characters that would break the sed
+      substitution or the HTML. Letters, digits, space, dot, underscore and dash only.
+    quiet: true
+
+- name: Install the web title patcher
+  ansible.builtin.template:
+    src: pve-web-title.j2
+    dest: /usr/local/sbin/pve-web-title
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Re-apply the web title after every apt run
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99-pve-web-title
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // {{ pve_managed_note }}
+      DPkg::Post-Invoke { "[ -x /usr/local/sbin/pve-web-title ] && /usr/local/sbin/pve-web-title >/dev/null 2>&1 || true"; };
+
+- name: Check whether the title is applied
+  ansible.builtin.command:
+    cmd: grep -q "<title>{{ pve_web_title }} - " /usr/share/pve-manager/index.html.tpl
+  register: _title_patched
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Apply the title now
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/pve-web-title
+  register: _title_apply
+  changed_when: _title_apply.rc == 0
+  failed_when: false
+  when:
+    - _title_patched.rc != 0
+    - not ansible_check_mode
+
+- name: Warn if the title did not apply
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: web title not applied - upstream index.html.tpl
+      changed shape. See `journalctl -t pve-web-title`. Cosmetic only.
+  when: _title_apply.rc | default(0) != 0

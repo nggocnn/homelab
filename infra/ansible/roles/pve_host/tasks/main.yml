@@ -34,6 +34,11 @@
   when: pve_remove_nag | bool
   tags: [nag]
 
+- name: Web title
+  ansible.builtin.import_tasks: webtitle.yml
+  when: pve_web_title | length > 0
+  tags: [webtitle]
+
 - name: Hosts file
   ansible.builtin.import_tasks: hostsfile.yml
   tags: [hosts]
