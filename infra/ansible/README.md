@@ -203,7 +203,7 @@ ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertis
 | `ssh` | `ssh.yml` | Root's authorised keys (additive — never pruned) and key-only login, installed through `sshd -t` validation protecting from a malformed drop-in. |
 | `tuning` | `tuning.yml` | `vm.swappiness=10`, journal capped at 1 G. |
 | `iommu` | `iommu.yml` | `intel_iommu=on iommu=pt` merged into the bootloader **by whole token**, plus the vfio modules. |
-| `power` | `power.yml` | CPU governor `powersave`, asserted afterwards. |
+| `power` | `power.yml` | CPU governor `powersave`, EPP `balance_power`, PCI runtime PM (NIC excluded), asserted afterwards. |
 | `wol` | `wol.yml` | `/usr/local/sbin/pve-wol`, unit and udev rule arming `wol g` on the uplink, and the uplink MAC registered with `pvenode config set --wakeonlan <MAC>` so `pvenode wakeonlan <node>` works from a peer. |
 | `updates` | `updates.yml` | unattended-upgrades, Debian-Security origins only, PVE packages and kernels blacklisted, no automatic reboot. |
 | — | `dns.yml` | Search domain and `pve_dns_servers` through `pvesh`. Run by `14-dns-clients.yml`, not `00-host.yml`. |

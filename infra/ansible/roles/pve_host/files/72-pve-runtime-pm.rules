@@ -1,0 +1,3 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand.
+# Let idle PCI devices suspend. The NIC is left alone: it carries corosync and the e1000e hang workaround.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{class}!="0x02*", TEST=="power/control", ATTR{power/control}="auto"
