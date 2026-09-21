@@ -8,7 +8,7 @@ keepalived_router_id: 51      # must match across the group and be unique on the
 keepalived_advert_int: 1
 
 # Health checks. Each is { name, script }; a failing one costs keepalived_check_weight
-# priority, so the VIP leaves a container whose service died but which is still up.
+# priority, so the VIP leaves a host whose service died but which is still up.
 #
 # The weight must be LARGER than the gap between neighbouring priorities. At -50 with
 # priorities 50 apart, one failed check only levels the holder with its peer, and VRRP
