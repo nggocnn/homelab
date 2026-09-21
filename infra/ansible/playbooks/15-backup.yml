@@ -1,0 +1,19 @@
+---
+# Proxmox Backup Server on pbs-01..03, then a nightly job per node to the PBS on the next node.
+#
+# Run 03-lxc.yml --limit pbs first. Both plays together - the second reads the first's fingerprints.
+#
+#   (umask 077; read -rsp 'PBS password: ' p && printf '%s' "$p" > pbs-password; unset p)
+#   ansible-playbook playbooks/15-backup.yml
+- name: Backup servers
+  hosts: pbs
+  gather_facts: false
+  roles:
+    - apt_packages
+    - pbs
+
+- name: Backup storages and jobs
+  hosts: pve_primary
+  gather_facts: false
+  roles:
+    - pve_backup

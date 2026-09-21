@@ -1,0 +1,9 @@
+---
+# --- container ----------------------------------------------------------------
+# The datastore is its own volume and backup=0, so the ring backs up the PBS rootfs
+# without copying one datastore into the next.
+lxc_pool: infrastructure
+lxc_memory_mb: 2048
+lxc_disk_gb: 8
+lxc_mountpoints:
+  - "local-lvm:64,mp=/mnt/datastore,backup=0"

@@ -42,6 +42,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container — `pve_lxc` seeds root's keys at create time only. |
 | `playbooks/13-dns.yml` | `dns-01..03`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the three. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers (`pct set`) at `lxc_resolvers`. Last, because creation uses the gateway - on a first build `dns_vip` does not exist yet. A container applies it on its next start. |
+| `playbooks/15-backup.yml` | Proxmox Backup Server on `pbs-01..03`, datastore on its own `mp0`, with prune (7 daily / 4 weekly / 3 monthly), GC and verify jobs. Then one nightly job per node, backing up all its guests to the PBS on the **next** node, so no guest lands on its own disk. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -60,6 +61,8 @@ ansible-playbook playbooks/12-bastion.yml
 (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 ansible-playbook playbooks/13-dns.yml
 ansible-playbook playbooks/14-dns-clients.yml
+(umask 077; read -rsp 'PBS password: ' p && printf '%s' "$p" > pbs-password; unset p)
+ansible-playbook playbooks/15-backup.yml
 ```
 
 ### Cluster VIP

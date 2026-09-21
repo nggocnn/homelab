@@ -1,0 +1,17 @@
+---
+pbs_suite: trixie
+
+pbs_datastore: store
+# A subdirectory: the volume root holds lost+found, and a datastore wants an empty directory.
+pbs_datastore_path: /mnt/datastore/store
+
+pbs_gc_schedule: daily
+pbs_prune_schedule: daily
+pbs_keep: { daily: 7, weekly: 4, monthly: 3 }
+pbs_verify_schedule: weekly
+
+# The cluster's login. Set on creation only; force a change with -e pbs_force_password=true.
+# The file holds the plaintext; it is read on the controller and never echoed.
+pbs_user: pve@pbs
+pbs_password_file: "{{ playbook_dir }}/../pbs-password"
+pbs_force_password: false
