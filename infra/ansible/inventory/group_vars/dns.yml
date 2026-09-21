@@ -1,0 +1,32 @@
+---
+# --- container ----------------------------------------------------------------
+# 512 MB is tight for pihole-FTL and AdGuard together; the query DB and querylog grow.
+lxc_memory_mb: 1024
+lxc_disk_gb: 8
+
+# Never itself, and never the VIP it serves.
+lxc_resolvers: "{{ pve_gateway }}"
+
+# --- packages -----------------------------------------------------------------
+apt_packages:
+  - sqlite3    # gravity.db adlists
+  - dnsutils   # dig, for the keepalived health checks
+
+# --- keepalived ---------------------------------------------------------------
+# 150 / 100 / 50, from position in the group, so a fourth member needs no new var.
+keepalived_vip: "{{ dns_vip }}"
+keepalived_priority: "{{ 150 - (groups['dns'].index(inventory_hostname) * 50) }}"
+keepalived_peers: "{{ groups['dns'] | reject('equalto', inventory_hostname) | map('extract', hostvars, 'ansible_host') | list }}"
+keepalived_router_id: 51
+
+# Exit status only: dig fails when nothing answers on the port, and still succeeds on
+# SERVFAIL. So a dead daemon moves the VIP, while a WAN outage - which would hit every
+# member equally - does not.
+keepalived_scripts:
+  - name: chk_pihole
+    script: "/usr/bin/dig +time=1 +tries=1 @127.0.0.1 A {{ dns_probe_name }}"
+  - name: chk_adguard
+    script: "/usr/bin/dig +time=1 +tries=1 @127.0.0.1 -p 5353 A {{ dns_probe_name }}"
+
+# Any name; only whether something replies matters.
+dns_probe_name: "{{ groups['pve'][0] }}.{{ pve_domain }}"

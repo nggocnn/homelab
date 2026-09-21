@@ -1,0 +1,41 @@
+---
+# Point the nodes and the containers at dns_vip. Runs after 13-dns.yml, never before:
+# creation uses the gateway, because on a first build the resolvers do not exist yet.
+#
+#   ansible-playbook playbooks/14-dns-clients.yml
+- name: Nodes
+  hosts: pve
+  gather_facts: false
+  tasks:
+    - name: Resolvers
+      ansible.builtin.import_role:
+        name: pve_host
+        tasks_from: dns.yml
+
+- name: Containers
+  hosts: lxc
+  gather_facts: false
+  tasks:
+    # argv, not cmd: several resolvers are one argument with a space in it, and the
+    # command module would shlex-split it into two.
+    - name: Read the configured nameserver
+      ansible.builtin.command:
+        cmd: pct config {{ ansible_host.split('.')[-1] }}
+      delegate_to: "{{ lxc_node }}"
+      changed_when: false
+      check_mode: false
+      register: _ct_conf
+
+    - name: Point {{ inventory_hostname }} at {{ lxc_resolvers }}
+      ansible.builtin.command:
+        argv: [pct, set, "{{ ansible_host.split('.')[-1] }}", --nameserver, "{{ lxc_resolvers }}"]
+      delegate_to: "{{ lxc_node }}"
+      register: _ct_ns
+      # `is search`, not regex_search with a capture group: the latter fails with
+      # "Unknown argument" in a conditional. See wiki homelab/006.
+      when: "not (_ct_conf.stdout is search('(?m)^nameserver: ' ~ (lxc_resolvers | regex_escape) ~ '$'))"
+
+    - name: Note that it lands on the next start
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: now {{ lxc_resolvers }}, applied when the container next starts"
+      when: _ct_ns is changed

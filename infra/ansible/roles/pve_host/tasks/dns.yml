@@ -1,0 +1,29 @@
+---
+# The node's resolvers. Through pvesh rather than writing /etc/resolv.conf: the API and
+# the DNS panel own that file, so one mechanism stays in charge of it.
+
+- name: Assert at most three resolvers
+  ansible.builtin.assert:
+    that: pve_dns_servers | length > 0 and pve_dns_servers | length <= 3
+    fail_msg: "pve_dns_servers takes 1-3 entries (dns1..dns3), got {{ pve_dns_servers | length }}."
+    quiet: true
+
+- name: Read the node's configured DNS
+  ansible.builtin.command:
+    cmd: pvesh get /nodes/{{ inventory_hostname }}/dns --output-format json
+  changed_when: false
+  check_mode: false
+  register: _pve_dns_raw
+
+- name: Parse it
+  ansible.builtin.set_fact:
+    _pve_dns: "{{ _pve_dns_raw.stdout | from_json }}"
+
+- name: Set the search domain and resolvers
+  ansible.builtin.command:
+    argv: "{{ lookup('ansible.builtin.template', 'dns_argv.json.j2') | from_json }}"
+  when: >-
+    _pve_dns.search | default('') != pve_domain
+    or _pve_dns.dns1 | default('') != pve_dns_servers[0] | default('')
+    or _pve_dns.dns2 | default('') != pve_dns_servers[1] | default('')
+    or _pve_dns.dns3 | default('') != pve_dns_servers[2] | default('')

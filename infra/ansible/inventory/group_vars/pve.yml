@@ -18,6 +18,13 @@ pve_pools:
   - { id: container-platform, comment: "10.10.10.150-169 | Docker hosts" }
   - { id: kubernetes-lab,     comment: "10.10.10.170-199 | on-demand Kubernetes lab" }
 
+# --- dns --------------------------------------------------------------------
+# dns1..dns3, in order. The VIP first; the gateway behind it so a node can still
+# resolve for apt and chrony while the resolver pair is down.
+pve_dns_servers:
+  - "{{ dns_vip }}"
+  - "{{ pve_gateway }}"
+
 # --- images -----------------------------------------------------------------
 # Put on every node: `url`/pveam name downloads on the node, `src` pushes from local machine.
 # Additive: removing an entry deletes nothing.

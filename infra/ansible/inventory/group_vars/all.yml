@@ -8,3 +8,6 @@ pve_domain: nggocnn.internal
 
 pve_subnet_cidr: 10.10.10.0/24
 pve_gateway: 10.10.10.1
+
+# Floating addresses, held by keepalived. Not guests.
+dns_vip: 10.10.10.51

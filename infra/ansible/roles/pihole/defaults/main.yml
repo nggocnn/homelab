@@ -1,0 +1,30 @@
+---
+# Upstream is AdGuard on the loopback; AdGuard does the DNS-over-TLS and the DNSSEC
+# validation, so doing it again here buys nothing.
+pihole_upstreams:
+  - 127.0.0.1#{{ adguard_dns_port | default(5353) }}
+
+# LOCAL answers the local subnet only. Tailnet clients arrive SNATed to a subnet
+# router's LAN address, so they qualify.
+pihole_listening_mode: LOCAL
+
+# Query history. The container has 8 GB and nothing else to spend it on.
+pihole_max_db_days: 30
+
+# Pi-hole v6 runs its own NTP client and server. An unprivileged LXC has no CAP_SYS_TIME,
+# so every sync fails with "Insufficient permissions" - the Proxmox host owns the clock.
+pihole_ntp: false
+
+# Records for names that are not inventory hosts, as { ip, name }. The per-host
+# records come from the inventory and are not listed here.
+pihole_extra_records: []
+
+# Blocklists. Additive - removing an entry here does not remove the list.
+pihole_adlists:
+  - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+
+# `pihole setpassword` salts afresh every time, so it runs on first install only.
+# The file holds the plaintext; it is read on the controller and never echoed.
+# Force a change with -e pihole_force_password=true.
+pihole_password_file: "{{ playbook_dir }}/../pihole-password"
+pihole_force_password: false

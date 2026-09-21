@@ -1,0 +1,121 @@
+---
+# Pi-hole's upstream, on the loopback. Installed before pihole so :53 has somewhere to forward.
+#
+# AdGuard rewrites AdGuardHome.yaml itself, filling in every default it did not find, so a
+# whole-file template would report `changed` on every run. This seeds a minimal config, then
+# merges the managed keys back into whatever AdGuard wrote.
+
+- name: Read the admin password hash
+  ansible.builtin.set_fact:
+    _adguard_password_hash: "{{ lookup('ansible.builtin.file', adguard_password_hash_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password hash exists
+  ansible.builtin.assert:
+    that: _adguard_password_hash is match('^\$2[aby]\$')
+    fail_msg: "Missing {{ adguard_password_hash_file | realpath }} - create it with: mkpasswd -m bcrypt -R 10 > adguard-password.hash"
+    quiet: true
+
+- name: The managed config
+  ansible.builtin.set_fact:
+    _adguard_desired:
+      http:
+        address: "{{ adguard_web_bind }}"
+      users: "{{ [{'name': adguard_user, 'password': _adguard_password_hash}] }}"
+      dns:
+        bind_hosts: "{{ [adguard_dns_bind] }}"
+        port: "{{ adguard_dns_port | int }}"
+        upstream_dns: "{{ adguard_upstreams }}"
+        bootstrap_dns: "{{ adguard_bootstrap }}"
+        enable_dnssec: true
+      filtering:
+        safe_search:
+          enabled: "{{ adguard_safe_search | bool }}"
+  no_log: true
+
+- name: Look for the AdGuard Home binary
+  ansible.builtin.stat:
+    path: "{{ adguard_dir }}/AdGuardHome"
+  register: _adguard_bin
+
+- name: Install AdGuard Home {{ adguard_version }}
+  ansible.builtin.unarchive:
+    src: https://github.com/AdguardTeam/AdGuardHome/releases/download/{{ adguard_version }}/AdGuardHome_linux_amd64.tar.gz
+    dest: /opt
+    remote_src: true
+    owner: root
+    group: root
+  when: not _adguard_bin.stat.exists
+
+- name: Look for the config
+  ansible.builtin.stat:
+    path: "{{ adguard_dir }}/AdGuardHome.yaml"
+  register: _adguard_cfg
+
+# A config has to exist before the service starts, or AdGuard runs its setup wizard
+# instead and the file the wizard writes is the one that wins.
+- name: Seed the config
+  ansible.builtin.copy:
+    content: "{{ _adguard_desired | to_nice_yaml(indent=2) }}"
+    dest: "{{ adguard_dir }}/AdGuardHome.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not _adguard_cfg.stat.exists
+  no_log: true
+
+- name: Look for the systemd unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/AdGuardHome.service
+  register: _adguard_unit
+
+- name: Install the service
+  ansible.builtin.command:
+    cmd: "{{ adguard_dir }}/AdGuardHome -s install"
+  when: not _adguard_unit.stat.exists
+  changed_when: true
+
+- name: Enable and start AdGuardHome
+  ansible.builtin.service:
+    name: AdGuardHome
+    enabled: true
+    state: started
+
+- name: Read the config back
+  ansible.builtin.slurp:
+    src: "{{ adguard_dir }}/AdGuardHome.yaml"
+  register: _adguard_live
+  no_log: true
+
+- name: Merge the managed keys into what AdGuard wrote
+  ansible.builtin.set_fact:
+    _adguard_current: "{{ _adguard_live.content | b64decode | from_yaml }}"
+  no_log: true
+
+- name: The result on disk
+  ansible.builtin.set_fact:
+    _adguard_merged: "{{ _adguard_current | combine(_adguard_desired, recursive=true) }}"
+  no_log: true
+
+# Guarded on the parsed data, not the rendered file: AdGuard writes its own key order and
+# to_nice_yaml sorts alphabetically, so comparing text reports changed on every run. A
+# persistent change here means AdGuard is dropping or rewriting a managed key.
+- name: Enforce the config
+  ansible.builtin.copy:
+    content: "{{ _adguard_merged | to_nice_yaml(indent=2) }}"
+    dest: "{{ adguard_dir }}/AdGuardHome.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: _adguard_merged != _adguard_current
+  no_log: true
+  notify: restart adguardhome
+
+- name: Flush handlers so the resolver is live before pihole points at it
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the resolver
+  ansible.builtin.wait_for:
+    host: "{{ adguard_dns_bind }}"
+    port: "{{ adguard_dns_port }}"
+    timeout: 30

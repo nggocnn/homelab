@@ -1,0 +1,46 @@
+! Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+
+global_defs {
+    router_id {{ inventory_hostname }}
+    script_user root
+    enable_script_security
+}
+{% for s in keepalived_scripts %}
+
+vrrp_script {{ s.name }} {
+    script "{{ s.script }}"
+    interval {{ keepalived_check_interval }}
+    fall 2
+    rise 2
+    weight {{ keepalived_check_weight }}
+}
+{% endfor %}
+
+vrrp_instance VI_1 {
+    state BACKUP
+    interface {{ keepalived_interface }}
+    virtual_router_id {{ keepalived_router_id }}
+    priority {{ keepalived_priority }}
+    advert_int {{ keepalived_advert_int }}
+
+    ! Unicast, not multicast: membership is a fixed list, and multicast being filtered
+    ! on the bridge is how several members end up holding the VIP at once.
+    unicast_src_ip {{ ansible_host }}
+    unicast_peer {
+{% for peer in keepalived_peers %}
+        {{ peer }}
+{% endfor %}
+    }
+{% if keepalived_scripts %}
+
+    track_script {
+{% for s in keepalived_scripts %}
+        {{ s.name }}
+{% endfor %}
+    }
+{% endif %}
+
+    virtual_ipaddress {
+        {{ keepalived_vip }}/{{ pve_subnet_cidr.split('/')[1] }} dev {{ keepalived_interface }}
+    }
+}

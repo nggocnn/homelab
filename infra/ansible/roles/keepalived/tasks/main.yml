@@ -1,0 +1,34 @@
+---
+# VRRP failover for a floating address. Unprivileged LXC has CAP_NET_ADMIN in its own
+# netns, so assigning the address to eth0 is allowed.
+
+- name: Assert a VIP is set
+  ansible.builtin.assert:
+    that: keepalived_vip | length > 0
+    fail_msg: keepalived_vip is empty - set it for this group.
+    quiet: true
+
+- name: Install keepalived
+  ansible.builtin.apt:
+    name: keepalived
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Write keepalived.conf
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart keepalived
+
+# Skipped under --check on a host without the package: apt was only simulated, so
+# there is no unit for the service module to find.
+- name: Enable and start keepalived
+  ansible.builtin.service:
+    name: keepalived
+    enabled: true
+    state: started
+  when: not ansible_check_mode

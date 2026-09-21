@@ -1,0 +1,142 @@
+---
+# Client-facing resolver on :53. Its only upstream is AdGuard on the loopback.
+
+- name: Read the admin password
+  ansible.builtin.set_fact:
+    _pihole_password: "{{ lookup('ansible.builtin.file', pihole_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _pihole_password | length > 0
+    fail_msg: "Missing {{ pihole_password_file | realpath }} - create it with: read -rsp 'Pi-hole password: ' p && printf '%s' \"$p\" > pihole-password"
+    quiet: true
+
+- name: Assert it is not a placeholder
+  ansible.builtin.assert:
+    that: not (_pihole_password is match('^<.*>$'))
+    fail_msg: "{{ pihole_password_file | realpath }} holds a literal placeholder, not a password."
+    quiet: true
+
+- name: Look for Pi-hole
+  ansible.builtin.stat:
+    path: /usr/local/bin/pihole
+  register: _pihole_bin
+
+- name: Install Pi-hole
+  when: not _pihole_bin.stat.exists
+  block:
+    - name: Create /etc/pihole
+      ansible.builtin.file:
+        path: /etc/pihole
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Without an existing config the installer takes its fresh_install path, never checks
+    # --unattended, tries to draw dialogs and dies. pi-hole/pi-hole#6380.
+    - name: Seed pihole.toml so --unattended is honoured
+      ansible.builtin.copy:
+        dest: /etc/pihole/pihole.toml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [dns]
+          upstreams = [ "{{ pihole_upstreams | join('", "') }}" ]
+          listeningMode = "{{ pihole_listening_mode }}"
+
+    - name: Fetch the installer
+      ansible.builtin.get_url:
+        url: https://install.pi-hole.net
+        dest: /tmp/pihole-install.sh
+        mode: "0755"
+
+    - name: Run the installer
+      ansible.builtin.command:
+        cmd: bash /tmp/pihole-install.sh --unattended
+      changed_when: true
+      register: _pihole_install
+  always:
+    - name: Remove the installer
+      ansible.builtin.file:
+        path: /tmp/pihole-install.sh
+        state: absent
+
+# One record per inventory host, so every node and container has a name in pve_domain
+# and the resolvers cannot disagree about it. Same idea as pve_host's /etc/hosts.
+- name: Build the host records
+  ansible.builtin.set_fact:
+    _pihole_hosts: "{{ lookup('ansible.builtin.template', 'hosts.json.j2') | from_json }}"
+
+- name: Build the config
+  ansible.builtin.set_fact:
+    _pihole_settings:
+      - { key: dns.upstreams, value: "{{ pihole_upstreams | to_json }}" }
+      - { key: dns.listeningMode, value: "{{ pihole_listening_mode }}" }
+      - { key: dns.dnssec, value: "false" }
+      - { key: dns.domain.name, value: "{{ pve_domain }}" }
+      - { key: dns.expandHosts, value: "true" }
+      - { key: dns.hosts, value: "{{ _pihole_hosts | to_json }}" }
+      - { key: database.maxDBdays, value: "{{ pihole_max_db_days }}" }
+      - { key: ntp.sync.active, value: "{{ pihole_ntp | ternary('true', 'false') }}" }
+      - { key: ntp.ipv4.active, value: "{{ pihole_ntp | ternary('true', 'false') }}" }
+      - { key: ntp.ipv6.active, value: "{{ pihole_ntp | ternary('true', 'false') }}" }
+
+- name: Read the current config
+  ansible.builtin.command:
+    cmd: pihole-FTL --config {{ item.key }}
+  loop: "{{ _pihole_settings }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: _pihole_current
+  changed_when: false
+  check_mode: false
+
+# Compared with quotes and whitespace stripped, because the read-back format is not
+# byte-identical to what --config accepts.
+- name: Set what drifted
+  ansible.builtin.command:
+    cmd: pihole-FTL --config {{ item.item.key }} {{ item.item.value | quote }}
+  loop: "{{ _pihole_current.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.stdout | regex_replace('[\s"]', '') != item.item.value | regex_replace('[\s"]', '')
+  notify: reload pihole dns
+
+- name: Read the stored password hash
+  ansible.builtin.command:
+    cmd: pihole-FTL --config webserver.api.pwhash
+  register: _pihole_pwhash
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# Salted afresh on every call, so setting it unconditionally would report changed forever.
+- name: Set the admin password
+  ansible.builtin.command:
+    cmd: pihole setpassword {{ _pihole_password | quote }}
+  when: _pihole_pwhash.stdout | trim | length == 0 or pihole_force_password | bool
+  changed_when: true
+  no_log: true
+
+# argv, not cmd: the command module shlex-parses a cmd string and would strip the SQL's
+# own quotes, leaving the URL bare and sqlite choking on the "https:" colon.
+# INSERT OR IGNORE prints nothing either way, so changes() reports whether the row was new.
+- name: Add the adlists
+  ansible.builtin.command:
+    argv:
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - "INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('{{ item | replace(\"'\", \"''\") }}', 1, 'ansible'); SELECT changes();"
+  loop: "{{ pihole_adlists }}"
+  register: _pihole_adlist
+  changed_when: _pihole_adlist.stdout | trim == '1'
+  notify: update gravity
+
+- name: Enable and start pihole-FTL
+  ansible.builtin.service:
+    name: pihole-FTL
+    enabled: true
+    state: started
