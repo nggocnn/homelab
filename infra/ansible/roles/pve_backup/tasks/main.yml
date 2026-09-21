@@ -1,0 +1,103 @@
+---
+# Cluster-wide, so run on the primary only. Every PBS becomes a storage, and every node gets
+# one job that backs up all its guests to the PBS on the next node in groups['pve'] - so no
+# guest lands on its own disk. Retention is the PBS prune job's, not set here.
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _pbs_password: "{{ lookup('ansible.builtin.file', pve_backup_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password and fingerprints exist
+  ansible.builtin.assert:
+    that:
+      - _pbs_password | length > 0
+      - groups['pbs'] | map('extract', hostvars) | selectattr('pbs_fingerprint', 'defined') | list | length == groups['pbs'] | length
+    fail_msg: "Needs pbs-password and the pbs play run first in the same playbook, without --limit."
+    quiet: true
+
+- name: Plan the jobs
+  vars:
+    _next: "{{ groups['pve'][(_i + 1) % (groups['pve'] | length)] }}"
+    _mins: "{{ pve_backup_start_hour * 60 + _i * 20 }}"
+  ansible.builtin.set_fact:
+    _jobs: >-
+      {{ _jobs | default([]) + [{
+           'id': 'backup-' ~ item,
+           'node': item,
+           'storage': groups['pbs'] | map('extract', hostvars) | selectattr('lxc_node', 'equalto', _next)
+                      | map(attribute='inventory_hostname') | first,
+           'schedule': '%02d:%02d' | format(_mins | int // 60, _mins | int % 60) }] }}
+  loop: "{{ groups['pve'] }}"
+  loop_control:
+    index_var: _i
+
+# --- storage ------------------------------------------------------------------
+- name: Read the storages
+  ansible.builtin.command:
+    cmd: pvesh get /storage --output-format json
+  register: _storages
+  changed_when: false
+  check_mode: false
+
+- name: Index them by id
+  ansible.builtin.set_fact:
+    _storage: "{{ dict((_storages.stdout | from_json) | map(attribute='storage') | zip(_storages.stdout | from_json)) }}"
+
+- name: Add missing PBS storages
+  ansible.builtin.command:
+    cmd: >-
+      pvesm add pbs {{ item }}
+      --server {{ hostvars[item].ansible_host }}
+      --datastore {{ pve_backup_datastore }}
+      --username {{ pve_backup_user }}
+      --password {{ _pbs_password | quote }}
+      --fingerprint {{ hostvars[item].pbs_fingerprint }}
+      --content backup
+  loop: "{{ groups['pbs'] | reject('in', _storage) | list }}"
+  no_log: true
+
+# A rebuilt PBS has a new certificate.
+- name: Correct drifted fingerprints
+  ansible.builtin.command:
+    cmd: pvesm set {{ item }} --fingerprint {{ hostvars[item].pbs_fingerprint }}
+  loop: "{{ groups['pbs'] | select('in', _storage) | list }}"
+  when: _storage[item].fingerprint | default('') | lower != hostvars[item].pbs_fingerprint | lower
+
+# --- jobs ---------------------------------------------------------------------
+- name: Read the backup jobs
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/backup --output-format json
+  register: _backup
+  changed_when: false
+  check_mode: false
+
+- name: Index them by id
+  ansible.builtin.set_fact:
+    _backup_jobs: "{{ dict((_backup.stdout | from_json) | map(attribute='id') | zip(_backup.stdout | from_json)) }}"
+
+- name: Create missing jobs
+  ansible.builtin.command:
+    cmd: >-
+      pvesh create /cluster/backup --id {{ item.id }}
+      --node {{ item.node }} --all 1 --storage {{ item.storage }}
+      --schedule {{ item.schedule }} --mode {{ pve_backup_mode }}
+  loop: "{{ _jobs | rejectattr('id', 'in', _backup_jobs) | list }}"
+  loop_control:
+    label: "{{ item.id }} -> {{ item.storage }} at {{ item.schedule }}"
+
+- name: Correct drifted jobs
+  ansible.builtin.command:
+    cmd: >-
+      pvesh set /cluster/backup/{{ item.id }}
+      --node {{ item.node }} --all 1 --storage {{ item.storage }}
+      --schedule {{ item.schedule }} --mode {{ pve_backup_mode }}
+  loop: "{{ _jobs | selectattr('id', 'in', _backup_jobs) | list }}"
+  loop_control:
+    label: "{{ item.id }} -> {{ item.storage }} at {{ item.schedule }}"
+  when: >-
+    _backup_jobs[item.id].node | default('') != item.node
+    or _backup_jobs[item.id].storage | default('') != item.storage
+    or _backup_jobs[item.id].schedule | default('') != item.schedule
+    or _backup_jobs[item.id].mode | default('') != pve_backup_mode
+    or _backup_jobs[item.id].all | default(0) | int != 1

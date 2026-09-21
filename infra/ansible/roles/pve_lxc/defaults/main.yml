@@ -21,5 +21,8 @@ lxc_pool: ""
 # Host device paths passed through, e.g. [/dev/net/tun].
 lxc_devices: []
 
+# Extra volumes, e.g. ["local-lvm:64,mp=/mnt/data,backup=0"].
+lxc_mountpoints: []
+
 # Authorised for root inside the container.
 lxc_root_authorized_keys: []

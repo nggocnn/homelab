@@ -1,0 +1,8 @@
+---
+pve_backup_user: pve@pbs
+pve_backup_password_file: "{{ playbook_dir }}/../pbs-password"
+pve_backup_datastore: store
+pve_backup_mode: snapshot
+
+# First node's start time; the rest follow 20 minutes apart, in groups['pve'] order.
+pve_backup_start_hour: 1

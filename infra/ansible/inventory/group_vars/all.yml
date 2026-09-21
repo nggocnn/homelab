@@ -14,3 +14,8 @@ pve_gateway: 10.10.10.1
 pve_vip: 10.10.10.50
 pve_vip_name: "pve.{{ pve_domain }}"
 dns_vip: 10.10.10.51
+
+# download.proxmox.com GeoDNS rotates between sg and au here, and au runs days
+# behind - which left the three nodes on different pve-manager versions. Pinned
+# so all of them see one index, nodes and PBS alike. Revert to download.proxmox.com to regain failover.
+pve_repo_host: sg.cdn.proxmox.com

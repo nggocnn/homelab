@@ -80,11 +80,6 @@ pve_kernel_params:
 # --- behaviour toggles ------------------------------------------------------
 pve_repo_no_subscription: true   # enterprise repo off, no-subscription on
 
-# download.proxmox.com GeoDNS rotates between sg and au here, and au runs days
-# behind - which left the three nodes on different pve-manager versions. Pinned
-# so all three see one index. Revert to download.proxmox.com to regain failover.
-pve_repo_host: sg.cdn.proxmox.com
-
 pve_disable_ceph_repo: true      # not using Ceph
 pve_remove_nag: true
 pve_web_title: "{{ pve_cluster_name }}"   # the tab says `pve`, not whichever node the VIP landed on
