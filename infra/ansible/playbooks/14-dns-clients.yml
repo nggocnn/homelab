@@ -16,8 +16,6 @@
   hosts: lxc
   gather_facts: false
   tasks:
-    # argv, not cmd: several resolvers are one argument with a space in it, and the
-    # command module would shlex-split it into two.
     - name: Read the configured nameserver
       ansible.builtin.command:
         cmd: pct config {{ ansible_host.split('.')[-1] }}
@@ -26,6 +24,8 @@
       check_mode: false
       register: _ct_conf
 
+    # argv, not cmd: several resolvers are one argument with a space in it, and the
+    # command module would shlex-split it into two.
     - name: Point {{ inventory_hostname }} at {{ lxc_resolvers }}
       ansible.builtin.command:
         argv: [pct, set, "{{ ansible_host.split('.')[-1] }}", --nameserver, "{{ lxc_resolvers }}"]

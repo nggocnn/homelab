@@ -1,6 +1,6 @@
 ---
-# VRRP failover for a floating address. Unprivileged LXC has CAP_NET_ADMIN in its own
-# netns, so assigning the address to eth0 is allowed.
+# VRRP failover for a floating address, on the nodes (vmbr0) or in containers (eth0).
+# Unprivileged LXC has CAP_NET_ADMIN in its own netns, so assigning the address is allowed.
 
 - name: Assert a VIP is set
   ansible.builtin.assert:

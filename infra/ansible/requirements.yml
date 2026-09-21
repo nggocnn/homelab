@@ -1,10 +1,7 @@
 ---
-# Ubuntu's ansible-core package ships no collections at all, so even the ones
-# that feel built-in have to be installed. Only ansible.posix is required by
-# the Phase 0 playbooks; the others are here for the guest phases that follow.
+# Installed into ./collections, ahead of the apt package's bundled copies.
 collections:
-  - name: ansible.posix        # authorized_key, sysctl
+  - name: ansible.posix        # authorized_key
     version: ">=2.2.2"         # apt ships 2.1.0: to_native deprecation warning
-  - name: community.general
-  - name: community.proxmox    # guests, pools, API tokens (Phase 1+)
+  - name: community.proxmox    # proxmox_pct_remote connection (bastion)
   - name: community.crypto     # openssh_keypair (bastion)

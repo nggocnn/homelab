@@ -192,3 +192,5 @@ cd ../ansible
 ansible-playbook playbooks/00-host.yml     # make first-boot's work permanent
 ansible-playbook playbooks/01-cluster.yml  # form cluster `pve` on pve-01
 ```
+
+The rest, in order: [`infra/ansible`](../ansible/README.md#playbooks).

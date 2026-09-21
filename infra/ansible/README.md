@@ -168,7 +168,7 @@ Optional switches:
 
 `TS_API_KEY` (a Tailscale API token, read from the environment and never written to disk)
 lets `11-tailscale.yml` approve each router's own subnet routes instead of you clicking
-approve in the admin console. Unset, the role behaves exactly as before.
+approve in the admin console. Unset, approve by hand.
 
 ```bash
 -e tailscale_login_with_authkey=true    # also mint a single-use key and log in, no `tailscale up`
@@ -206,6 +206,7 @@ ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertis
 | `power` | `power.yml` | CPU governor `powersave`, asserted afterwards. |
 | `wol` | `wol.yml` | `/usr/local/sbin/pve-wol`, unit and udev rule arming `wol g` on the uplink, and the uplink MAC registered with `pvenode config set --wakeonlan <MAC>` so `pvenode wakeonlan <node>` works from a peer. |
 | `updates` | `updates.yml` | unattended-upgrades, Debian-Security origins only, PVE packages and kernels blacklisted, no automatic reboot. |
+| — | `dns.yml` | Search domain and `pve_dns_servers` through `pvesh`. Run by `14-dns-clients.yml`, not `00-host.yml`. |
 | `reboot` | `reboot.yml` | Reboots only when the running kernel is older than the installed one, or a requested kernel parameter is not yet in `/proc/cmdline`. |
 
 ---

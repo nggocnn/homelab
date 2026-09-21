@@ -4,8 +4,8 @@
 #
 # Config comes from here, not from the two web UIs - a UI change is overwritten on the next run.
 #
-#   htpasswd -B -n admin | cut -d: -f2 > adguard-password.hash
-#   printf '%s' '<password>' > pihole-password
+#   (umask 077; mkpasswd -m bcrypt -R 10 > adguard-password.hash)
+#   (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 #   ansible-playbook playbooks/13-dns.yml
 - name: DNS
   hosts: dns
