@@ -1,0 +1,9 @@
+---
+- name: Certificate
+  ansible.builtin.import_tasks: cert.yml
+  when: pve_vip_cert_manage | bool
+  tags: [cert]
+
+- name: Health check
+  ansible.builtin.import_tasks: check.yml
+  tags: [check]

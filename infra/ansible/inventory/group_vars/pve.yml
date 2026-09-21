@@ -18,6 +18,25 @@ pve_pools:
   - { id: container-platform, comment: "10.10.10.150-169 | Docker hosts" }
   - { id: kubernetes-lab,     comment: "10.10.10.170-199 | on-demand Kubernetes lab" }
 
+# --- vip --------------------------------------------------------------------
+# pve_vip floats across the three nodes, so the web UI and the API have one address.
+# pveproxy forwards to whichever node owns a resource, so any single node is already a
+# complete entry point - the VIP is only what keeps that address alive when one goes.
+# Same priorities as the dns group: 150 / 100 / 50 by position in the group.
+keepalived_vip: "{{ pve_vip }}"
+keepalived_interface: vmbr0
+keepalived_priority: "{{ 150 - (groups['pve'].index(inventory_hostname) * 50) }}"
+keepalived_peers: "{{ groups['pve'] | reject('equalto', inventory_hostname) | map('extract', hostvars, 'ansible_host') | list }}"
+keepalived_router_id: 50
+
+# A request, not `systemctl is-active`: a hung pveproxy is still active. And quorum,
+# because a node outvoted in a partition serves a UI that can change nothing.
+keepalived_scripts:
+  - name: chk_pveproxy
+    script: "/usr/bin/curl -sfk -o /dev/null --max-time 2 https://127.0.0.1:8006/"
+  - name: chk_quorum
+    script: "/etc/keepalived/scripts/quorum-check"
+
 # --- dns --------------------------------------------------------------------
 # dns1..dns3, in order. The VIP first; the gateway behind it so a node can still
 # resolve for apt and chrony while the resolver pair is down.

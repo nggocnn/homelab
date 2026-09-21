@@ -10,4 +10,7 @@ pve_subnet_cidr: 10.10.10.0/24
 pve_gateway: 10.10.10.1
 
 # Floating addresses, held by keepalived. Not guests.
+# The name is what a browser is pointed at, and it is a SAN on every node certificate.
+pve_vip: 10.10.10.50
+pve_vip_name: "pve.{{ pve_domain }}"
 dns_vip: 10.10.10.51

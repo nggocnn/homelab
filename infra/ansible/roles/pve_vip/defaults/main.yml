@@ -1,0 +1,31 @@
+---
+# What a node needs before it can serve the cluster VIP: a certificate that answers to
+# the VIP's name, and the health check keepalived tracks. The VRRP itself is the
+# keepalived role.
+
+# --- certificate --------------------------------------------------------------
+# pvecm updatecerts regenerates pve-ssl.pem with a fixed set of names and no way to add
+# one, so the VIP name goes on pveproxy-ssl.pem instead - a custom certificate pveproxy
+# prefers when it is present.
+pve_vip_cert_manage: true
+pve_vip_cert: "/etc/pve/nodes/{{ inventory_hostname }}/pveproxy-ssl.pem"
+pve_vip_ca_cert: /etc/pve/pve-root-ca.pem
+pve_vip_ca_key: /etc/pve/priv/pve-root-ca.key
+
+# Every name and address the node answers to, its own included: this certificate
+# replaces pve-ssl.pem for anything reaching pveproxy, not just the VIP.
+pve_vip_cert_sans:
+  - "DNS:{{ inventory_hostname }}"
+  - "DNS:{{ inventory_hostname }}.{{ pve_domain }}"
+  - "DNS:{{ pve_vip_name }}"
+  - "IP:{{ ansible_host }}"
+  - "IP:{{ pve_vip }}"
+
+pve_vip_cert_days: 730
+pve_vip_cert_renew_days: 30    # reissue once the remaining life drops below this
+
+# --- health check -------------------------------------------------------------
+# Not /usr/local/sbin, where the other node scripts live: that directory is group-staff
+# writable on Debian, and keepalived's enable_script_security refuses to run anything
+# out of a path a non-root user could rewrite.
+pve_vip_check_dir: /etc/keepalived/scripts

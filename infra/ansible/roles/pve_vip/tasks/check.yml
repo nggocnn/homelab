@@ -1,0 +1,23 @@
+---
+- name: Create the check directory
+  ansible.builtin.file:
+    path: "{{ pve_vip_check_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install the quorum check
+  ansible.builtin.copy:
+    src: quorum-check
+    dest: "{{ pve_vip_check_dir }}/quorum-check"
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Assert the node is quorate
+  ansible.builtin.command:
+    cmd: "{{ pve_vip_check_dir }}/quorum-check"
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode

@@ -1,0 +1,20 @@
+---
+# Phase 2 - one address for the web UI and the API, floating across the three nodes.
+#
+# Proxmox has no cluster management address of its own. It does not need one to reach
+# the whole cluster: pveproxy forwards API calls, the node shell and noVNC to whichever
+# node owns the resource, and the session cookie is signed cluster-wide, so a session
+# survives the address moving. What is missing is only the address outliving its node.
+#
+# Run 01-cluster.yml first: the certificate is signed by the cluster CA, and the health
+# check asks corosync whether this node is quorate.
+#
+#   ansible-playbook playbooks/04-vip.yml
+#
+# Then trust /etc/pve/pve-root-ca.pem in the browser to clear the warning for good.
+- name: Cluster VIP
+  hosts: pve
+  gather_facts: false
+  roles:
+    - pve_vip      # the certificate and the quorum check first
+    - keepalived   # the VIP last, once the name it answers to is right

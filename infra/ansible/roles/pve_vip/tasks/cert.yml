@@ -1,0 +1,142 @@
+---
+# A node certificate carrying the VIP name, signed by the cluster CA that already
+# exists. Reissued only when the current one is missing, unsigned by that CA, short
+# of a name, or close to expiry - so a re-run is a no-op and does not restart pveproxy.
+
+- name: Assert the cluster CA exists
+  ansible.builtin.stat:
+    path: "{{ pve_vip_ca_key }}"
+  register: _pve_ca
+  failed_when: not _pve_ca.stat.exists
+  check_mode: false
+
+- name: Look for a custom pveproxy certificate
+  ansible.builtin.stat:
+    path: "{{ pve_vip_cert }}"
+  register: _pveproxy_cert
+  check_mode: false
+
+- name: Inspect the existing certificate
+  when: _pveproxy_cert.stat.exists
+  block:
+    - name: Check it against the cluster CA
+      ansible.builtin.command:
+        cmd: openssl verify -CAfile {{ pve_vip_ca_cert }} {{ pve_vip_cert }}
+      register: _cert_chain
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Check how much life is left
+      ansible.builtin.command:
+        cmd: openssl x509 -in {{ pve_vip_cert }} -noout -checkend {{ pve_vip_cert_renew_days | int * 86400 }}
+      register: _cert_life
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Read its names
+      ansible.builtin.command:
+        cmd: openssl x509 -in {{ pve_vip_cert }} -noout -ext subjectAltName
+      register: _cert_san
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+# openssl prints an address SAN as "IP Address:", not the "IP:" the config form uses.
+- name: Decide whether the certificate has to be reissued
+  ansible.builtin.set_fact:
+    _pve_vip_cert_ok: >-
+      {{ _pveproxy_cert.stat.exists
+         and _cert_chain.rc | default(1) == 0
+         and _cert_life.rc | default(1) == 0
+         and pve_vip_cert_sans | reject('in', _cert_san.stdout | default('') | replace('IP Address:', 'IP:')) | list | length == 0 }}
+
+- name: Issue the certificate
+  when: not _pve_vip_cert_ok | bool
+  block:
+    - name: Create a working directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: pve-vip-cert.
+      register: _certdir
+      check_mode: false
+
+    - name: Generate the key and the request
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -keyout
+          - "{{ _certdir.path }}/pveproxy-ssl.key"
+          - -out
+          - "{{ _certdir.path }}/pveproxy-ssl.csr"
+          - -subj
+          - "/CN={{ inventory_hostname }}.{{ pve_domain }}"
+      changed_when: true
+
+    - name: Write the extensions
+      ansible.builtin.copy:
+        dest: "{{ _certdir.path }}/ext.cnf"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          basicConstraints = critical,CA:FALSE
+          keyUsage = critical,digitalSignature,keyEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = {{ pve_vip_cert_sans | join(',') }}
+
+    # A random serial, never -CAcreateserial: the serial file would land in the
+    # replicated /etc/pve/priv, where three nodes signing at once would race on it.
+    - name: Sign it with the cluster CA
+      ansible.builtin.shell:
+        cmd: >-
+          openssl x509 -req -sha256
+          -in {{ _certdir.path }}/pveproxy-ssl.csr
+          -CA {{ pve_vip_ca_cert }} -CAkey {{ pve_vip_ca_key }}
+          -set_serial 0x$(openssl rand -hex 16)
+          -days {{ pve_vip_cert_days }}
+          -extfile {{ _certdir.path }}/ext.cnf
+          -out {{ _certdir.path }}/pveproxy-ssl.pem
+      changed_when: true
+
+    # pvenode validates the pair and places both halves itself, so there is one
+    # mechanism for the node certificate rather than a hand-placed copy beside it.
+    - name: Install it and restart pveproxy
+      ansible.builtin.command:
+        cmd: >-
+          pvenode cert set {{ _certdir.path }}/pveproxy-ssl.pem
+          {{ _certdir.path }}/pveproxy-ssl.key --force --restart
+      changed_when: true
+  always:
+    - name: Remove the working directory
+      ansible.builtin.file:
+        path: "{{ _certdir.path | default('') }}"
+        state: absent
+      check_mode: false
+      when: _certdir.path is defined
+
+# --- verify -------------------------------------------------------------------
+- name: Read back the installed names
+  ansible.builtin.command:
+    cmd: openssl x509 -in {{ pve_vip_cert }} -noout -ext subjectAltName
+  register: _cert_san_after
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Assert the certificate answers to the VIP
+  ansible.builtin.assert:
+    that:
+      - pve_vip_name in _cert_san_after.stdout
+      - pve_vip in _cert_san_after.stdout
+    fail_msg: >-
+      {{ pve_vip_cert }} does not carry {{ pve_vip_name }} / {{ pve_vip }},
+      so a browser pointed at the VIP gets a name mismatch.
+    quiet: true
+  when: not ansible_check_mode

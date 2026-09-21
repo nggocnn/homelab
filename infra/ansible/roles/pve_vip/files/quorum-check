@@ -1,0 +1,5 @@
+#!/bin/sh
+# keepalived health check: exit 0 only while this node is in the quorate partition.
+# A node that lost quorum has /etc/pve read-only and can administer nothing, so the
+# VIP has to leave it even though pveproxy is still answering.
+pvecm status 2>/dev/null | grep -q '^Quorate: *Yes'
