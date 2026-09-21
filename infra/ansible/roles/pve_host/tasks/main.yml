@@ -60,7 +60,7 @@
   when: pve_iommu | bool
   tags: [iommu]
 
-- name: CPU governor
+- name: Power
   ansible.builtin.import_tasks: power.yml
   tags: [power]
 

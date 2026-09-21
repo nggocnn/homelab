@@ -69,6 +69,7 @@ pve_root_authorized_keys:
 # intel_pstate's "powersave" still reaches full turbo under load - it is a ramp
 # policy, not a frequency cap, and it matters on three always-on boxes.
 pve_cpu_governor: powersave
+pve_cpu_epp: balance_power       # one step below the shipped balance_performance
 
 # VT-d passthrough. iommu=pt limits IOMMU translation to passed-through devices,
 # so host devices keep their normal DMA path.

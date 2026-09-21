@@ -1,7 +1,7 @@
 ---
 # intel_pstate's "powersave" is a ramp policy, not a frequency cap - the CPU
 # still reaches full turbo under load. On three always-on boxes that idle most
-# of the day it is the free half of the power bill.
+# of the day it is the free half of the power bill. The EPP hint sets how eagerly it ramps.
 - name: Install the CPU governor unit
   ansible.builtin.copy:
     dest: /etc/systemd/system/pve-cpu-governor.service
@@ -11,17 +11,29 @@
     content: |
       # {{ pve_managed_note }}
       [Unit]
-      Description=Set CPU scaling governor to {{ pve_cpu_governor }}
+      Description=Set CPU scaling governor to {{ pve_cpu_governor }}, EPP to {{ pve_cpu_epp }}
       After=multi-user.target
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
       ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo {{ pve_cpu_governor }} > "$g"; done'
+      ExecStart=/bin/sh -c 'for e in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo {{ pve_cpu_epp }} > "$e"; done'
 
       [Install]
       WantedBy=multi-user.target
+  register: _governor_unit
   notify: reload systemd
+
+- name: Install the PCI runtime power management udev rule
+  ansible.builtin.copy:
+    src: 72-pve-runtime-pm.rules
+    dest: /etc/udev/rules.d/72-pve-runtime-pm.rules
+    owner: root
+    group: root
+    mode: "0644"
+  register: _runtime_pm_rule
+  notify: reload udev rules
 
 - name: Flush handlers before enabling the governor unit
   ansible.builtin.meta: flush_handlers
@@ -32,24 +44,52 @@
   ansible.builtin.systemd_service:
     name: pve-cpu-governor.service
     enabled: true
-    state: started
+    state: "{{ 'restarted' if _governor_unit.changed else 'started' }}"
     daemon_reload: true
   when: not ansible_check_mode
 
-- name: Read back the active governor
+# The rule matches on add, so replay add for PCI only; the net rules do not fire.
+- name: Apply the runtime power management rule now
   ansible.builtin.command:
-    cmd: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+    cmd: udevadm trigger --subsystem-match=pci --action=add --settle
+  when:
+    - _runtime_pm_rule.changed
+    - not ansible_check_mode
+
+# --- verify -----------------------------------------------------------------
+- name: Read back the active governor and EPP
+  ansible.builtin.command:
+    cmd: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference
   changed_when: false
   check_mode: false
   register: _governor
   when: not ansible_check_mode
 
-- name: Assert the governor took effect
+- name: Assert the governor and EPP took effect
   ansible.builtin.assert:
-    that: _governor.stdout | trim == pve_cpu_governor
+    that: _governor.stdout_lines | default([]) == [pve_cpu_governor, pve_cpu_epp]
     fail_msg: >-
-      Governor is '{{ _governor.stdout | default('') | trim }}', expected
-      '{{ pve_cpu_governor }}'. Check that intel_pstate offers it:
-      cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
+      Governor and EPP are {{ _governor.stdout_lines | default([]) }}, expected
+      {{ [pve_cpu_governor, pve_cpu_epp] }}. Check what intel_pstate offers in
+      /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors and energy_performance_available_preferences
+    quiet: true
+  when: not ansible_check_mode
+
+- name: List PCI devices still pinned on, NIC aside
+  ansible.builtin.shell: |
+    for d in /sys/bus/pci/devices/*; do
+      case "$(cat "$d/class")" in 0x02*) continue ;; esac
+      [ "$(cat "$d/power/control")" = on ] && echo "${d##*/}"
+    done
+    true
+  changed_when: false
+  check_mode: false
+  register: _pinned_on
+  when: not ansible_check_mode
+
+- name: Assert every other PCI device may suspend
+  ansible.builtin.assert:
+    that: _pinned_on.stdout_lines | default([]) | length == 0
+    fail_msg: "Still power/control=on: {{ _pinned_on.stdout_lines | default([]) | join(', ') }}"
     quiet: true
   when: not ansible_check_mode

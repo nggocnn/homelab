@@ -14,6 +14,7 @@ pve_do_dist_upgrade: false
 pve_allow_reboot: false          # opt-in: a role default must not reboot a hypervisor
 
 pve_cpu_governor: powersave
+pve_cpu_epp: balance_power
 pve_kernel_params:
   - intel_iommu=on
   - iommu=pt
