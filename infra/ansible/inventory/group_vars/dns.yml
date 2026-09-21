@@ -12,6 +12,12 @@ apt_packages:
   - sqlite3    # gravity.db adlists
   - dnsutils   # dig, for the keepalived health checks
 
+# --- records ------------------------------------------------------------------
+# Names that are not inventory hosts. The per-host records are generated from the
+# inventory and need nothing here.
+pihole_extra_records:
+  - { ip: "{{ pve_vip }}", name: "{{ pve_vip_name }}" }
+
 # --- keepalived ---------------------------------------------------------------
 # 150 / 100 / 50, from position in the group, so a fourth member needs no new var.
 keepalived_vip: "{{ dns_vip }}"

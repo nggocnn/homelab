@@ -36,6 +36,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**. No-op once formed. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates` and `pve_isos` on every node's `local` storage — downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
 | `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
+| `playbooks/04-vip.yml` | `pve_vip` (`10.10.10.50`) floating across the three nodes, so the web UI and the API have one address. Each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. |
 | `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01..03`, each advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve each device's route in the admin console). Tailscale routes through one of them at a time and fails over to another. |
 | `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container — `pve_lxc` seeds root's keys at create time only. |
@@ -49,6 +50,7 @@ ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/03-lxc.yml
+ansible-playbook playbooks/04-vip.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
@@ -59,6 +61,43 @@ ansible-playbook playbooks/12-bastion.yml
 ansible-playbook playbooks/13-dns.yml
 ansible-playbook playbooks/14-dns-clients.yml
 ```
+
+### Cluster VIP
+
+`10.10.10.50` floats across the three nodes: `https://pve.nggocnn.internal:8006` reaches the
+cluster whichever node is up. Proxmox has no management address of its own and needs none to be
+cluster-wide — `pveproxy` forwards API calls, the node shell and noVNC to whichever node owns the
+resource, and the session cookie is signed cluster-wide, so a session survives the address moving.
+
+The web UI and the API only. SSH keeps using per-node names, because host keys differ per node.
+
+`pve_vip` tracks `pveproxy` **and** corosync quorum: a node outvoted in a partition has `/etc/pve`
+read-only and serves a UI that can change nothing, so the VIP leaves it.
+
+Each node's `pveproxy-ssl.pem` is reissued from the cluster CA with the VIP name and address as
+extra SANs — `pvecm updatecerts` regenerates `pve-ssl.pem` with a fixed set of names and no way to
+add one. Trust the cluster CA in the browser and the warning goes for good:
+
+```bash
+ansible pve-01 -m fetch -a 'src=/etc/pve/pve-root-ca.pem dest=~/ flat=yes'
+```
+
+Measured at 5/s against `https://10.10.10.50:8006/`, reading `NodeName` out of the response so
+each sample records which node answered:
+
+| Event | Outage | Path |
+| --- | --- | --- |
+| reboot the holder | <= 1.5 s | keepalived shuts down cleanly and adverts priority 0, so the backup promotes at once rather than waiting out three missed adverts |
+| `systemctl stop pveproxy`, node up | 6.4 s | check fails twice, priority drops 150 to 90, election runs |
+| `systemctl stop corosync`, node up | none | `chk_quorum` fails and the VIP leaves, while pveproxy on the old holder serves right up to the handover |
+
+One dropped sample is 1.5 s at this rate, and the baseline produced one with nothing happening, so
+the reboot row is at the probe's floor, not a measurement of it. Preempting back cost nothing
+measurable in all three. Exactly one node answered at every sample - no split brain.
+
+The third row is the case a service check alone misses: `pveproxy` never stopped answering on the
+partitioned node, and without `chk_quorum` the VIP would have stayed on a node whose `/etc/pve` had
+gone read-only.
 
 ### DNS
 
