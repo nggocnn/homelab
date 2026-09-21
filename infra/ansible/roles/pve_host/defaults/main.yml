@@ -5,6 +5,7 @@ pve_repo_no_subscription: true
 pve_repo_host: download.proxmox.com
 pve_disable_ceph_repo: true
 pve_remove_nag: true
+pve_web_title: ""             # empty leaves the shipped per-node tab title alone
 pve_nic_offload_fix: true
 pve_iommu: true
 pve_wol: true

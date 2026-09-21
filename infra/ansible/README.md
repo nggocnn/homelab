@@ -71,6 +71,8 @@ resource, and the session cookie is signed cluster-wide, so a session survives t
 
 The web UI and the API only. SSH keeps using per-node names, because host keys differ per node.
 
+The browser tab reads `pve`, not whichever node answered - `pve_web_title`, in `pve_host`.
+
 `pve_vip` tracks `pveproxy` **and** corosync quorum: a node outvoted in a partition has `/etc/pve`
 read-only and serves a UI that can change nothing, so the VIP leaves it.
 
@@ -195,6 +197,7 @@ ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertis
 | `packages` | `packages.yml` | The same package set `first-boot.sh` installs, through the shared `apt_packages` role. |
 | `nic` | `nic.yml` | `/usr/local/sbin/pve-nic-fix`, unit and udev rule. Interfaces are matched **by driver**, never by name. Asserts TSO/GSO/GRO `off` and EEE disabled afterwards. |
 | `nag` | `nag.yml` | The `orig_checked_command` patch plus the APT `Post-Invoke` hook that reapplies it after every upgrade. |
+| `webtitle` | `webtitle.yml` | The browser tab titled `pve_web_title` instead of the node name, with the same APT `Post-Invoke` hook as the nag. Off when `pve_web_title` is empty. |
 | `hosts` | `hostsfile.yml` | `/etc/hosts` templated with all three nodes; asserts `hostname -f`. |
 | `time` | `time.yml` | chrony running, and asserts the clock is actually synchronised. |
 | `ssh` | `ssh.yml` | Root's authorised keys (additive — never pruned) and key-only login, installed through `sshd -t` validation protecting from a malformed drop-in. |

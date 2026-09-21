@@ -1,0 +1,26 @@
+#!/bin/bash
+# {{ pve_managed_note }}
+#
+# Title the browser tab with one name for the cluster instead of the node the browser
+# happened to reach. Behind a floating address that is whichever node holds it, so the
+# node name in the tab says nothing useful.
+#
+# The shipped template comes back with every pve-manager upgrade, so this is also wired
+# to an APT Post-Invoke hook rather than relying on an Ansible run.
+TPL=/usr/share/pve-manager/index.html.tpl
+TITLE={{ pve_web_title | quote }}
+[ -f "$TPL" ] || exit 0
+grep -q "<title>$TITLE - " "$TPL" && exit 0          # already titled
+
+# Only the name ahead of the separator. NodeName further down the template is what the
+# UI identifies the node with and must keep its placeholder.
+sed -i.bak -E "s#<title>.* - #<title>$TITLE - #" "$TPL"
+
+if ! grep -q "<title>$TITLE - " "$TPL"; then
+  cp -f "$TPL.bak" "$TPL"
+  logger -t pve-web-title "PATTERN NOT FOUND - upstream template changed, no patch applied"
+  exit 1
+fi
+
+systemctl restart pveproxy.service
+logger -t pve-web-title "titled $TPL '$TITLE' and restarted pveproxy"
