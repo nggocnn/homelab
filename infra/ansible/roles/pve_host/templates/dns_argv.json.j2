@@ -1,0 +1,2 @@
+{# pvesh argv for the node's DNS: --search plus --dns1..--dns3 in order. #}
+["pvesh","set","/nodes/{{ inventory_hostname }}/dns","--search","{{ pve_domain }}"{% for s in pve_dns_servers %},"--dns{{ loop.index }}","{{ s }}"{% endfor %}]

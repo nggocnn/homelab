@@ -11,3 +11,7 @@ infra/ansible/collections/
 
 # Bastion user password hash (mkpasswd -m yescrypt) — generated locally, never committed.
 infra/ansible/bastion-password.hash
+
+# DNS admin credentials — generated locally, never committed.
+infra/ansible/adguard-password.hash
+infra/ansible/pihole-password

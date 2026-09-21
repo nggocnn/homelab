@@ -5,6 +5,13 @@ ansible_user: root
 ansible_ssh_private_key_file: ~/.ssh/lxc.nggocnn.internal
 ansible_python_interpreter: /usr/bin/python3
 
+# --- dns ---------------------------------------------------------------------
+# Steady state, applied by 14-dns-clients.yml. Creation uses pve_lxc's default, the
+# gateway, because dns_vip does not exist yet on a first build.
+# The VIP alone: keepalived is the redundancy, and a gateway fallback would answer
+# without filtering and without the internal names.
+lxc_resolvers: "{{ dns_vip }}"
+
 # --- access -----------------------------------------------------------------
 # Root's keys, applied by 03-lxc at creation and by guest_ssh. Additive, never pruned.
 lxc_root_authorized_keys:

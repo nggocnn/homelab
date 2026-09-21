@@ -1,0 +1,9 @@
+{# One "IP fqdn shortname" record per inventory host, plus pihole_extra_records, for dns.hosts. #}
+{% set records = [] %}
+{% for h in groups['all'] %}
+{%   set _ = records.append(hostvars[h].ansible_host ~ " " ~ h ~ "." ~ pve_domain ~ " " ~ h) %}
+{% endfor %}
+{% for r in pihole_extra_records %}
+{%   set _ = records.append(r.ip ~ " " ~ r.name) %}
+{% endfor %}
+{{ records | to_json }}

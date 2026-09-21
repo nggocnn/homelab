@@ -1,7 +1,4 @@
 ---
-lxc_devices:
-  - /dev/net/tun
-
 # The VIP first, the gateway behind it. This is an access path: if the resolver pair
 # is down and the container restarts, it still has to resolve its control plane to
 # reconnect. Filtering is not the point for these hostnames.

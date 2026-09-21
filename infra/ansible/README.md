@@ -39,6 +39,8 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01..03`, each advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve each device's route in the admin console). Tailscale routes through one of them at a time and fails over to another. |
 | `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container — `pve_lxc` seeds root's keys at create time only. |
+| `playbooks/13-dns.yml` | `dns-01..03`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the three. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
+| `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers (`pct set`) at `lxc_resolvers`. Last, because creation uses the gateway - on a first build `dns_vip` does not exist yet. A container applies it on its next start. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -52,7 +54,66 @@ export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
 mkpasswd -m yescrypt > bastion-password.hash              # bastion user's password, gitignored
 ansible-playbook playbooks/12-bastion.yml
+(umask 077; mkpasswd -m bcrypt -R 10 > adguard-password.hash)   # both gitignored
+(umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
+ansible-playbook playbooks/13-dns.yml
+ansible-playbook playbooks/14-dns-clients.yml
 ```
+
+### DNS
+
+Pi-hole's admin is on `:80`, AdGuard's on `:8080`. Query history is per container and does not
+merge, so it lives wherever `dns_vip` has been.
+
+Containers are *created* on `pve_gateway` and *moved* to `dns_vip` by `14-dns-clients.yml`.
+That split keeps the playbook order linear: on a first build nothing points at the resolver pair
+until step 13 has built it. `lxc_nameserver` is the creation value, `lxc_resolvers` the steady state.
+
+The `dns` group stays on the gateway - it is the service itself - and `tailscale` and
+`cloudflared` keep the gateway behind the VIP, so an access path can still reach its control
+plane while the pair is down.
+
+```bash
+ansible-playbook playbooks/14-dns-clients.yml   # nodes now, containers on their next start
+```
+
+### DNS failover
+
+Measured with `keepalived_check_interval: 2`. Probe the DNS VIP from a node at 5/s — exit status,
+not output, because `dig +short` prints `communications error` to stdout and a non-empty
+result is not a success:
+
+```bash
+while :; do dig +time=1 +tries=1 @10.10.10.51 A pve-01.nggocnn.internal >/dev/null 2>&1 \
+  && echo "$(date +%s.%N) OK" || echo "$(date +%s.%N) FAIL"; sleep 0.2; done
+```
+
+| Event | Outage | Path |
+| --- | --- | --- |
+| `pct stop` the holder | 2.5 s | keepalived exits, the backup promotes on the missing advert |
+| `systemctl stop pihole-FTL`, container still up | 5.9 s | check fails twice, priority drops, election runs |
+
+Stopping each container in turn walks the VIP down the priorities, `dns-01` (150) to `dns-02`
+(100) to `dns-03` (50), and starting them again walks it back up by preemption. Exactly one
+holder at every sample - no split brain.
+
+The second row is the case plain VRRP misses: the container is healthy, only the resolver is
+gone, so nothing but the tracked check notices.
+
+```
+Script `chk_pihole` now returning 9
+VRRP_Script(chk_pihole) failed (exited with status 9)
+(VI_1) Changing effective priority from 150 to 90
+(VI_1) Master received advert from 10.10.10.108 with higher priority 100, ours 90
+(VI_1) Entering BACKUP STATE
+```
+
+90, not 100: `keepalived_check_weight` (-60) has to exceed the 50 gap between neighbouring
+priorities. At -50 a failed check only levels the holder with its peer and VRRP breaks the
+tie on the higher address, not on health.
+
+The same test at `keepalived_check_interval: 5` measured 12.1 s. The floor is the election
+itself, which `advert_int` governs, not the checks.
 
 Optional switches:
 

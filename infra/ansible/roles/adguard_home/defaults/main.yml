@@ -1,0 +1,22 @@
+---
+# Pinned, not latest: an upstream release should never arrive on its own schedule.
+adguard_version: v0.107.79
+adguard_dir: /opt/AdGuardHome
+
+# Pi-hole owns :53 and :80, so AdGuard takes the loopback resolver and a spare UI port.
+adguard_dns_bind: 127.0.0.1
+adguard_dns_port: 5353
+adguard_web_bind: 0.0.0.0:8080
+adguard_safe_search: false
+
+# DNS-over-TLS upstreams. bootstrap_dns resolves the upstream hostnames themselves.
+adguard_upstreams:
+  - tls://1.1.1.1
+  - tls://9.9.9.9
+adguard_bootstrap:
+  - 1.1.1.1
+  - 9.9.9.9
+
+# mkpasswd -m bcrypt -R 10 > adguard-password.hash, gitignored.
+adguard_user: admin
+adguard_password_hash_file: "{{ playbook_dir }}/../adguard-password.hash"

@@ -1,0 +1,17 @@
+---
+# Three identical resolvers: Pi-hole on :53 facing clients, AdGuard on 127.0.0.1:5353 as its
+# upstream doing DNS-over-TLS, and keepalived floating dns_vip across them.
+#
+# Config comes from here, not from the two web UIs - a UI change is overwritten on the next run.
+#
+#   htpasswd -B -n admin | cut -d: -f2 > adguard-password.hash
+#   printf '%s' '<password>' > pihole-password
+#   ansible-playbook playbooks/13-dns.yml
+- name: DNS
+  hosts: dns
+  gather_facts: false
+  roles:
+    - apt_packages
+    - adguard_home   # the upstream first, so pihole has somewhere to forward
+    - pihole
+    - keepalived     # the VIP last, once something can answer on it
