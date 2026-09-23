@@ -42,6 +42,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container — `pve_lxc` seeds root's keys at create time only. |
 | `playbooks/13-dns.yml` | `dns-01..03`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the three. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers (`pct set`) at `lxc_resolvers`. Last, because creation uses the gateway - on a first build `dns_vip` does not exist yet. A container applies it on its next start. |
+| `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node, and alerts to Telegram. Node hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -60,6 +61,10 @@ ansible-playbook playbooks/12-bastion.yml
 (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 ansible-playbook playbooks/13-dns.yml
 ansible-playbook playbooks/14-dns-clients.yml
+(umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)   # both gitignored
+(umask 077; read -rsp 'Telegram bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
+read -rp 'Telegram chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c   # message the bot, then .../getUpdates
+ansible-playbook playbooks/20-beszel.yml
 ```
 
 ### Cluster VIP

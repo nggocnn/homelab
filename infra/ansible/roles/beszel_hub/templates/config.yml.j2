@@ -1,0 +1,6 @@
+systems:
+{% for h in beszel_systems %}
+  - name: {{ h }}
+    host: {{ hostvars[h].ansible_host }}
+    users: [{{ beszel_user_email }}]
+{% endfor %}

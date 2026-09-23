@@ -1,0 +1,19 @@
+---
+# Beszel: the hub on beszel-01, an agent on each node, alerts to Telegram.
+# Standalone - nothing here depends on the Prometheus stack, or the other way round.
+#
+#   (umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)
+#   (umask 077; read -rsp 'Bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
+#   read -rp 'Chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c
+#   ansible-playbook playbooks/20-beszel.yml
+- name: Beszel hub
+  hosts: beszel
+  gather_facts: false
+  roles:
+    - beszel_hub
+
+- name: Beszel agents
+  hosts: pve
+  gather_facts: false
+  roles:
+    - beszel_agent

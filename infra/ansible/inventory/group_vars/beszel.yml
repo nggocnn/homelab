@@ -1,0 +1,4 @@
+---
+# --- container ----------------------------------------------------------------
+lxc_pool: infrastructure
+lxc_disk_gb: 8   # SQLite history

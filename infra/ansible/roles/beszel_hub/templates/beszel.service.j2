@@ -1,0 +1,16 @@
+[Unit]
+Description=Beszel hub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=beszel
+Group=beszel
+EnvironmentFile=/etc/beszel/hub.env
+ExecStart={{ beszel_dir }}/beszel serve --http 0.0.0.0:{{ beszel_port }} --dir {{ beszel_data_dir }}
+Restart=always
+RestartSec=3
+StateDirectory={{ beszel_data_dir | basename }}
+
+[Install]
+WantedBy=multi-user.target

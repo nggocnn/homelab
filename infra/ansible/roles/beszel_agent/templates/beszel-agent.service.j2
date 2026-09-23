@@ -1,0 +1,31 @@
+[Unit]
+Description=Beszel agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=beszel
+SupplementaryGroups=disk
+Environment="KEY={{ _beszel_hub_key }}"
+Environment="LISTEN={{ beszel_agent_listen }}"
+ExecStart=/usr/local/bin/beszel-agent
+Restart=on-failure
+RestartSec=5
+StateDirectory=beszel-agent
+
+# smartctl on NVMe
+AmbientCapabilities=CAP_SYS_RAWIO CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN
+
+KeyringMode=private
+LockPersonality=yes
+ProtectClock=yes
+ProtectHome=read-only
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectSystem=strict
+RemoveIPC=yes
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

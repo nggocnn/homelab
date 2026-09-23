@@ -1,0 +1,25 @@
+---
+beszel_version: "0.20.0"
+beszel_dir: /opt/beszel
+beszel_data_dir: /var/lib/beszel
+beszel_port: 8090
+beszel_url: "http://{{ inventory_hostname }}.{{ pve_domain }}:{{ beszel_port }}"
+
+# Login, also the PocketBase superuser. Seeded on the first start only; the file holds the
+# plaintext (8+ characters), read on the controller and never echoed.
+beszel_user_email: "admin@{{ pve_domain }}"
+beszel_password_file: "{{ playbook_dir }}/../beszel-password"
+
+# Hosts the hub dials on :45876. Written to config.yml, which the hub syncs on start:
+# a system missing from the list is deleted, with its history.
+beszel_systems: "{{ groups['pve'] }}"
+
+# Applied to every system; alerts not listed here are deleted.
+# value: threshold (% or °C). min: minutes above it before firing; for Status, minutes down.
+beszel_alerts:
+  - { name: Status,        value: 0,  min: 2 }
+  - { name: CPU,           value: 90, min: 10 }
+  - { name: Memory,        value: 90, min: 10 }
+  - { name: Disk,          value: 85, min: 10 }
+  - { name: Temperature,   value: 85, min: 5 }
+  - { name: SystemdFailed, value: 0,  min: 1 }

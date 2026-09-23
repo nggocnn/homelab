@@ -14,3 +14,8 @@ pve_gateway: 10.10.10.1
 pve_vip: 10.10.10.50
 pve_vip_name: "pve.{{ pve_domain }}"
 dns_vip: 10.10.10.51
+
+# Alerts. One bot for Beszel and Alertmanager; the token and chat ID stay in gitignored files.
+telegram_bot_token_file: "{{ playbook_dir }}/../telegram-bot-token"
+telegram_chat_id_file: "{{ playbook_dir }}/../telegram-chat-id"
+telegram_chat_id: "{{ lookup('ansible.builtin.file', telegram_chat_id_file, errors='ignore') | default('', true) | trim }}"
