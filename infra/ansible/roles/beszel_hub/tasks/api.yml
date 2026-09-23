@@ -1,0 +1,132 @@
+---
+# Through the PocketBase API as the superuser, which bypasses the per-user record rules.
+# Everything set here is overwritten on the next run - a UI change to these does not stick.
+
+- name: Read the Telegram bot token
+  ansible.builtin.set_fact:
+    _telegram_token: "{{ lookup('ansible.builtin.file', telegram_bot_token_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the Telegram settings exist
+  ansible.builtin.assert:
+    that:
+      - _telegram_token is match('^[0-9]+:')
+      - telegram_chat_id is match('^-?[0-9]+$')
+    fail_msg: >-
+      Needs {{ telegram_bot_token_file | realpath }} (the token from @BotFather) and {{ telegram_chat_id_file | realpath }}
+      (message the bot, then: curl -s https://api.telegram.org/bot<token>/getUpdates).
+    quiet: true
+
+- name: Log in as the superuser
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/_superusers/auth-with-password"
+    method: POST
+    body_format: json
+    body: { identity: "{{ beszel_user_email }}", password: "{{ _beszel_password }}" }
+  register: _auth
+  no_log: true
+
+- name: Find the user
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/users/records?filter={{ ('email=\"' ~ beszel_user_email ~ '\"') | urlencode }}"
+    headers: "{{ _headers }}"
+  register: _users
+
+- name: Keep the user an admin
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/users/records/{{ _user.id }}"
+    method: PATCH
+    headers: "{{ _headers }}"
+    body_format: json
+    body: { role: admin }
+  when: _user.role != 'admin'
+  changed_when: true
+
+# The hub creates the record when the UI first loads. Emails off: no SMTP is configured.
+- name: Read the notification settings
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/user_settings/records?filter={{ ('user=\"' ~ _user.id ~ '\"') | urlencode }}"
+    headers: "{{ _headers }}"
+  register: _settings
+
+- name: Create the notification settings
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/user_settings/records"
+    method: POST
+    headers: "{{ _headers }}"
+    body_format: json
+    body: { user: "{{ _user.id }}", settings: { chartTime: 1h } }
+  when: _settings.json['items'] | length == 0
+  register: _settings_created
+  changed_when: true
+
+- name: Send notifications to Telegram
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/user_settings/records/{{ _current.id }}"
+    method: PATCH
+    headers: "{{ _headers }}"
+    body_format: json
+    body: { settings: "{{ _desired }}" }
+  vars:
+    _current: "{{ _settings_created.json if _settings_created is changed else _settings.json['items'][0] }}"
+    _desired: "{{ _current.settings | combine({'emails': [], 'webhooks': [_webhook]}) }}"
+    _webhook: "telegram://{{ _telegram_token }}@telegram?chats={{ telegram_chat_id }}"
+  when: _current.settings != _desired
+  changed_when: true
+  no_log: true
+
+- name: List the systems
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/systems/records?perPage=500"
+    headers: "{{ _headers }}"
+  register: _systems
+
+- name: List the alerts
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/alerts/records?perPage=500&filter={{ ('user=\"' ~ _user.id ~ '\"') | urlencode }}"
+    headers: "{{ _headers }}"
+  register: _alerts
+
+- name: Create alerts
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/alerts/records"
+    method: POST
+    headers: "{{ _headers }}"
+    body_format: json
+    body: { user: "{{ _user.id }}", system: "{{ item.0.id }}", name: "{{ item.1.name }}", value: "{{ item.1.value }}", min: "{{ item.1.min }}" }
+  loop: "{{ _systems.json['items'] | product(beszel_alerts) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.name }}"
+  vars:
+    _match: "{{ _alerts.json['items'] | selectattr('system', 'eq', item.0.id) | selectattr('name', 'eq', item.1.name) | list }}"
+  when: _match | length == 0
+  changed_when: true
+
+- name: Update alerts
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/alerts/records/{{ _match[0].id }}"
+    method: PATCH
+    headers: "{{ _headers }}"
+    body_format: json
+    body: { value: "{{ item.1.value }}", min: "{{ item.1.min }}" }
+  loop: "{{ _systems.json['items'] | product(beszel_alerts) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.name }}"
+  vars:
+    _match: "{{ _alerts.json['items'] | selectattr('system', 'eq', item.0.id) | selectattr('name', 'eq', item.1.name) | list }}"
+  when: >-
+    _match | length > 0 and
+    (_match[0].value | float != item.1.value | float or _match[0].min | int != item.1.min | int)
+  changed_when: true
+
+- name: Delete alerts not in beszel_alerts
+  ansible.builtin.uri:
+    url: "{{ _api }}/collections/alerts/records/{{ item.id }}"
+    method: DELETE
+    headers: "{{ _headers }}"
+    status_code: 204
+  loop: "{{ _alerts.json['items'] }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in beszel_alerts | map(attribute='name')
+  changed_when: true
