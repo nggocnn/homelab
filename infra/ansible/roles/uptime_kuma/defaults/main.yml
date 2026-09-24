@@ -1,0 +1,5 @@
+---
+uptime_kuma_version: "2.5.5"
+uptime_kuma_dir: /opt/uptime-kuma
+uptime_kuma_data_dir: /var/lib/uptime-kuma
+uptime_kuma_port: 3001

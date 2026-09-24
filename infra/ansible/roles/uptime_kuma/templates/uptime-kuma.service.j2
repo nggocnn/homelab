@@ -1,0 +1,26 @@
+[Unit]
+Description=Uptime Kuma
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=kuma
+Group=kuma
+WorkingDirectory={{ uptime_kuma_dir }}
+Environment=DATA_DIR={{ uptime_kuma_data_dir }}/
+Environment=UPTIME_KUMA_PORT={{ uptime_kuma_port }}
+Environment=UPTIME_KUMA_DB_TYPE=sqlite
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node {{ uptime_kuma_dir }}/server/server.js
+Restart=on-failure
+RestartSec=5
+
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths={{ uptime_kuma_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

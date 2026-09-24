@@ -1,0 +1,12 @@
+# kuma-01: probes the VIPs, the containers and the tunnel from outside, and serves a status page.
+# Monitors come from AutoKuma files; create the admin in the web UI first, with the password in kuma-password.
+#
+#   (umask 077; read -rsp 'Uptime Kuma password: ' p && printf '%s' "$p" > kuma-password; unset p)
+#   ansible-playbook playbooks/21-uptime-kuma.yml
+- name: Uptime Kuma
+  hosts: kuma
+  gather_facts: false
+  roles:
+    - apt_packages
+    - uptime_kuma
+    - autokuma

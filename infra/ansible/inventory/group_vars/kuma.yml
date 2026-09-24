@@ -1,0 +1,11 @@
+---
+# --- container ----------------------------------------------------------------
+lxc_pool: infrastructure
+lxc_memory_mb: 1024   # npm ci needs the headroom
+lxc_disk_gb: 8
+
+# --- monitors -----------------------------------------------------------------
+# Pings and DNS lookups come from the inventory; these are the rest.
+autokuma_monitors:
+  pve-vip: { type: http, name: Proxmox VIP, url: "https://{{ pve_vip }}:8006", ignore_tls: true }
+  beszel: { type: http, name: Beszel, url: "http://{{ hostvars['beszel-01'].ansible_host }}:8090" }

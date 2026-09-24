@@ -1,0 +1,24 @@
+---
+autokuma_version: "2.1.0-rc.2"   # rc: reconnects after an Uptime Kuma restart; 2.0.0 stays logged out
+autokuma_config_dir: /etc/autokuma
+autokuma_monitor_dir: "{{ autokuma_config_dir }}/monitors"
+autokuma_data_dir: /var/lib/autokuma
+
+# The Uptime Kuma login, created by hand on the first visit. The file holds the plaintext.
+autokuma_user: admin
+autokuma_password_file: "{{ playbook_dir }}/../kuma-password"
+
+# A group per entry, with a ping monitor for each host in its inventory group.
+autokuma_ping_groups:
+  nodes: { name: Nodes, hosts: pve }
+  containers: { name: Containers, hosts: lxc }
+
+# Lookups through dns_vip and each host in autokuma_dns_hosts, under a DNS group.
+# expect: the answer must equal it, so a stale or missing record fails too.
+autokuma_dns_hosts: dns
+autokuma_dns_checks:
+  local: { hostname: "{{ pve_vip_name }}", expect: "{{ pve_vip }}" }   # Pi-hole's own records
+  upstream: { hostname: cloudflare.com }                              # Pi-hole -> AdGuard -> internet
+
+# Extra monitors, keyed by AutoKuma id. Fields: https://github.com/BigBoot/AutoKuma/tree/master/monitors
+autokuma_monitors: {}

@@ -1,0 +1,70 @@
+---
+# Probes from outside: whether an address answers. Monitors come from the autokuma role;
+# the status page is made in the web UI.
+
+- name: Install nodejs, npm and git
+  ansible.builtin.apt:
+    name:
+      - nodejs   # 20.19 in Debian 13; Uptime Kuma needs 20.4+
+      - npm
+      - git
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the kuma user
+  ansible.builtin.user:
+    name: kuma
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ uptime_kuma_data_dir }}"
+    create_home: true
+
+- name: Clone Uptime Kuma {{ uptime_kuma_version }}
+  ansible.builtin.git:
+    repo: https://github.com/louislam/uptime-kuma.git
+    dest: "{{ uptime_kuma_dir }}"
+    version: "{{ uptime_kuma_version }}"
+    depth: 1
+  register: _kuma_clone
+
+# npm run setup, minus its git checkout: the clone above is already at the tag.
+- name: Install the dependencies
+  ansible.builtin.command:
+    cmd: npm ci --omit dev --no-audit
+    chdir: "{{ uptime_kuma_dir }}"
+  when: _kuma_clone is changed
+  changed_when: true
+  notify: restart uptime-kuma
+
+- name: Fetch the prebuilt frontend
+  ansible.builtin.command:
+    cmd: node extra/download-dist.js
+    chdir: "{{ uptime_kuma_dir }}"
+  when: _kuma_clone is changed
+  changed_when: true
+  notify: restart uptime-kuma
+
+- name: Own the data directory
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_data_dir }}"
+    state: directory
+    owner: kuma
+    group: kuma
+    mode: "0750"
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: uptime-kuma.service.j2
+    dest: /etc/systemd/system/uptime-kuma.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart uptime-kuma
+
+- name: Enable and start uptime-kuma
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    enabled: true
+    state: started
+    daemon_reload: true
