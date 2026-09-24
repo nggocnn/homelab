@@ -1,0 +1,33 @@
+{# Every AutoKuma entity, keyed by id, as JSON. Each becomes one file in autokuma_monitor_dir. #}
+{%- set m = {} -%}
+
+{#- Telegram. applyExisting is stored by Uptime Kuma; without it the config never compares equal. -#}
+{%- set _ = m.update({'telegram': {
+      'type': 'notification', 'name': 'Telegram', 'active': true, 'is_default': true,
+      'config': {'type': 'telegram', 'telegramBotToken': _telegram_token, 'telegramChatID': telegram_chat_id, 'applyExisting': false}}}) -%}
+
+{#- A ping per host, under a group per inventory group. -#}
+{%- for id, g in autokuma_ping_groups.items() -%}
+{%-   set _ = m.update({id: {'type': 'group', 'name': g.name}}) -%}
+{%-   for h in groups[g.hosts] -%}
+{%-     set _ = m.update({'ping-' ~ h: {'type': 'ping', 'name': h, 'hostname': hostvars[h].ansible_host, 'parent_name': id}}) -%}
+{%-   endfor -%}
+{%- endfor -%}
+
+{#- Each DNS check through the VIP and through every DNS host. -#}
+{%- set _ = m.update({'dns': {'type': 'group', 'name': 'DNS'}}) -%}
+{%- set servers = {'vip': dns_vip} -%}
+{%- for h in groups[autokuma_dns_hosts] -%}
+{%-   set _ = servers.update({h: hostvars[h].ansible_host}) -%}
+{%- endfor -%}
+{%- for s, ip in servers.items() -%}
+{%-   for c, d in autokuma_dns_checks.items() -%}
+{%-     set _ = m.update({'dns-' ~ c ~ '-' ~ s: {
+          'type': 'dns', 'name': ('DNS VIP' if s == 'vip' else s) ~ ' ' ~ c, 'parent_name': 'dns',
+          'hostname': d.hostname, 'dns_resolve_server': ip, 'port': 53, 'dns_resolve_type': 'A',
+          'conditions': [{'type': 'expression', 'variable': 'record', 'operator': 'equals', 'value': d.expect, 'andOr': 'and'}]
+                        if d.expect is defined else []}}) -%}
+{%-   endfor -%}
+{%- endfor -%}
+
+{{ m | combine(autokuma_monitors) | to_json }}

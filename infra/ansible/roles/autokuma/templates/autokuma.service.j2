@@ -1,0 +1,21 @@
+[Unit]
+Description=AutoKuma
+Wants=uptime-kuma.service
+After=uptime-kuma.service
+
+[Service]
+User=autokuma
+Group=autokuma
+EnvironmentFile={{ autokuma_config_dir }}/autokuma.env
+ExecStart=/usr/local/bin/autokuma-{{ autokuma_version }}
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths={{ autokuma_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

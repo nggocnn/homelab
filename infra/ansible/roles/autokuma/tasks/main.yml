@@ -1,0 +1,102 @@
+---
+# Monitors as code: each one is a file AutoKuma syncs into Uptime Kuma every few seconds.
+# A monitor whose file is removed is deleted a minute later, with its history.
+
+- name: Read the Uptime Kuma password
+  ansible.builtin.set_fact:
+    _autokuma_password: "{{ lookup('ansible.builtin.file', autokuma_password_file, errors='ignore') | default('', true) | trim }}"
+    _telegram_token: "{{ lookup('ansible.builtin.file', telegram_bot_token_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password and the Telegram settings exist
+  ansible.builtin.assert:
+    that:
+      - _autokuma_password | length >= 8
+      - _telegram_token is match('^[0-9]+:')
+      - telegram_chat_id is match('^-?[0-9]+$')
+    fail_msg: "Missing {{ autokuma_password_file | realpath }} (read -rsp 'Uptime Kuma password: ' p && printf '%s' \"$p\" > kuma-password), or the Telegram token or chat ID"
+    quiet: true
+
+- name: Create the autokuma user
+  ansible.builtin.user:
+    name: autokuma
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ autokuma_data_dir }}"
+    create_home: true
+
+- name: Install AutoKuma {{ autokuma_version }}
+  ansible.builtin.get_url:
+    url: https://github.com/BigBoot/AutoKuma/releases/download/v{{ autokuma_version }}/autokuma-linux
+    dest: /usr/local/bin/autokuma-{{ autokuma_version }}
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: autokuma
+    mode: "0750"
+  loop:
+    - "{{ autokuma_config_dir }}"
+    - "{{ autokuma_monitor_dir }}"
+
+- name: Write the environment
+  ansible.builtin.template:
+    src: autokuma.env.j2
+    dest: "{{ autokuma_config_dir }}/autokuma.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart autokuma
+
+- name: Collect the monitors
+  ansible.builtin.set_fact:
+    _autokuma_entities: "{{ lookup('ansible.builtin.template', 'entities.json.j2') | from_json }}"
+  no_log: true
+
+- name: Write the monitors
+  ansible.builtin.copy:
+    dest: "{{ autokuma_monitor_dir }}/{{ item.key }}.json"
+    content: "{{ item.value | combine({} if item.value.type in ['group', 'notification'] else {'notification_name_list': ['telegram']}) | to_nice_json }}\n"
+    owner: root
+    group: autokuma
+    mode: "0640"
+  loop: "{{ _autokuma_entities | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Find the monitor files
+  ansible.builtin.find:
+    paths: "{{ autokuma_monitor_dir }}"
+    patterns: ["*.json", "*.toml"]
+  register: _autokuma_files
+
+- name: Remove monitors no longer defined
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _autokuma_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: item.path | basename | splitext | first not in _autokuma_entities
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: autokuma.service.j2
+    dest: /etc/systemd/system/autokuma.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart autokuma
+
+- name: Enable and start autokuma
+  ansible.builtin.systemd_service:
+    name: autokuma
+    enabled: true
+    state: started
+    daemon_reload: true

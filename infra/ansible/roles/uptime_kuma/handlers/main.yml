@@ -1,0 +1,6 @@
+---
+- name: restart uptime-kuma
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    state: restarted
+    daemon_reload: true
