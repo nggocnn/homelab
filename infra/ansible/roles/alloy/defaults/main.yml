@@ -1,0 +1,6 @@
+---
+# Grafana's OpenTelemetry Collector distribution. Promtail, which it replaces, reached
+# end of life in March 2026.
+alloy_port: 12345   # its own metrics and its UI, scraped by Prometheus
+alloy_journal_max_age: 12h
+alloy_loki_url: "http://{{ hostvars[groups['monitor'][0]].ansible_host }}:{{ loki_port | default(3100) }}/loki/api/v1/push"

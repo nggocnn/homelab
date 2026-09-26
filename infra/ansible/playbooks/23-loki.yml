@@ -1,0 +1,15 @@
+---
+# Logs: journald on the nodes, shipped by Alloy to Loki beside Prometheus, read in Grafana.
+#
+#   ansible-playbook playbooks/23-loki.yml
+- name: Loki
+  hosts: monitor
+  gather_facts: false
+  roles:
+    - loki
+
+- name: Alloy
+  hosts: pve
+  gather_facts: false
+  roles:
+    - alloy

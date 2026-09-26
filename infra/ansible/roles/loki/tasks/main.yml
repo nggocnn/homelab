@@ -1,0 +1,50 @@
+---
+# From the Grafana apt repository, which the grafana role already added on this host.
+
+- name: Install the Grafana package signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+# update_cache on the install itself, so a run that died after adding the repo still sees the package.
+- name: Install loki
+  ansible.builtin.apt:
+    name: loki
+    state: present
+    update_cache: true
+
+- name: Create the data directory
+  ansible.builtin.file:
+    path: "{{ loki_data_dir }}"
+    state: directory
+    owner: loki      # the package's adduser --system leaves the group as nogroup
+    mode: "0750"
+
+- name: Write the config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/loki/config.yml
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/bin/loki -config.file=%s -verify-config
+  notify: restart loki
+
+- name: Enable and start loki
+  ansible.builtin.systemd_service:
+    name: loki
+    enabled: true
+    state: started
+    daemon_reload: true

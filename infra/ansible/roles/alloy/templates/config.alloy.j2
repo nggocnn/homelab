@@ -1,0 +1,35 @@
+// Managed by Ansible. journald on this host, shipped to Loki.
+
+// The journal fields worth a label. Everything else stays in the line.
+loki.relabel "journal" {
+  forward_to = []
+
+  // Not the labels argument below: the component overwrites job with its own id.
+  rule {
+    target_label = "job"
+    replacement  = "journal"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "host" {
+  max_age       = "{{ alloy_journal_max_age }}"
+  labels        = { host = "{{ inventory_hostname }}" }
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "{{ alloy_loki_url }}"
+  }
+}

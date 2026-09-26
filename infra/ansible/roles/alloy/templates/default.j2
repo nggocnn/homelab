@@ -1,0 +1,4 @@
+# Managed by Ansible.
+CONFIG_FILE="/etc/alloy/config.alloy"
+CUSTOM_ARGS="--server.http.listen-addr={{ ansible_host }}:{{ alloy_port }}"
+RESTART_ON_UPGRADE=true

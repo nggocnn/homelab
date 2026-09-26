@@ -1,0 +1,53 @@
+---
+# The package puts alloy in the adm and systemd-journal groups, which is what it needs
+# to read the journal.
+
+- name: Install the Grafana package signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+# update_cache on the install itself, so a run that died after adding the repo still sees the package.
+- name: Install alloy
+  ansible.builtin.apt:
+    name: alloy
+    state: present
+    update_cache: true
+
+- name: Write the config
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: "0640"
+    validate: /usr/bin/alloy validate %s
+  notify: restart alloy
+
+- name: Write the environment
+  ansible.builtin.template:
+    src: default.j2
+    dest: /etc/default/alloy
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart alloy
+
+- name: Enable and start alloy
+  ansible.builtin.systemd_service:
+    name: alloy
+    enabled: true
+    state: started
+    daemon_reload: true
