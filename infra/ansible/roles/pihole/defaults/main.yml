@@ -8,6 +8,9 @@ pihole_upstreams:
 # router's LAN address, so they qualify.
 pihole_listening_mode: LOCAL
 
+# keepalived's health check asks 127.0.0.1 every 2 s, which would be 90% of the stats.
+pihole_ignore_localhost: true
+
 # Query history. The container has 8 GB and nothing else to spend it on.
 pihole_max_db_days: 30
 

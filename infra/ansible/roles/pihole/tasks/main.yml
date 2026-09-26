@@ -78,6 +78,7 @@
       - { key: dns.dnssec, value: "false" }
       - { key: dns.domain.name, value: "{{ pve_domain }}" }
       - { key: dns.expandHosts, value: "true" }
+      - { key: dns.ignoreLocalhost, value: "{{ pihole_ignore_localhost | ternary('true', 'false') }}" }
       - { key: dns.hosts, value: "{{ _pihole_hosts | to_json }}" }
       - { key: database.maxDBdays, value: "{{ pihole_max_db_days }}" }
       - { key: ntp.sync.active, value: "{{ pihole_ntp | ternary('true', 'false') }}" }
