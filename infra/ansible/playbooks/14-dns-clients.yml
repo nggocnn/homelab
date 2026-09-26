@@ -1,6 +1,7 @@
 ---
 # Point the nodes and the containers at dns_vip. Runs after 13-dns.yml, never before:
 # creation uses the gateway, because on a first build the resolvers do not exist yet.
+# Containers get it in their config and in the live resolv.conf, so no restart is needed.
 #
 #   ansible-playbook playbooks/14-dns-clients.yml
 - name: Nodes
@@ -35,7 +36,9 @@
       # "Unknown argument" in a conditional. See wiki homelab/006.
       when: "not (_ct_conf.stdout is search('(?m)^nameserver: ' ~ (lxc_resolvers | regex_escape) ~ '$'))"
 
-    - name: Note that it lands on the next start
-      ansible.builtin.debug:
-        msg: "{{ inventory_hostname }}: now {{ lxc_resolvers }}, applied when the container next starts"
-      when: _ct_ns is changed
+    # pct set lands on the next start; the live file gets the same PVE block now.
+    - name: Apply {{ lxc_resolvers }} without a restart
+      ansible.builtin.blockinfile:
+        path: /etc/resolv.conf
+        marker: "# --- {mark} PVE ---"
+        block: "{{ (['search ' ~ pve_domain] + lxc_resolvers.split() | map('regex_replace', '^', 'nameserver ') | list) | join('\n') }}"
