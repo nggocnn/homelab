@@ -1,0 +1,21 @@
+[Unit]
+Description=Proxmox VE exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=pve-exporter
+Group=pve-exporter
+ExecStart={{ pve_exporter_dir }}/bin/pve_exporter \
+  --config.file {{ pve_exporter_config }} \
+  --web.listen-address {{ pve_exporter_listen }}
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

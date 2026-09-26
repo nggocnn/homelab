@@ -1,0 +1,11 @@
+---
+alertmanager_version: "0.34.1"
+alertmanager_dir: /opt/alertmanager
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+alertmanager_listen: "127.0.0.1:9093"
+
+# One message per group, then every 12 h while it is still firing.
+alertmanager_group_wait: 30s
+alertmanager_group_interval: 5m
+alertmanager_repeat_interval: 12h

@@ -1,0 +1,24 @@
+# First match wins. Unmatched processes are counted with their parent's group, so each
+# guest's processes land under its lxc-start or kvm; host processes outside these groups
+# are not tracked. Names only the host uses - a guest process must not match first.
+process_names:
+  - name: "lxc/{{.Matches.id}}"
+    comm: [lxc-start]
+    cmdline: ['-n (?P<id>\d+)']
+
+  - name: "qemu/{{.Matches.id}}"
+    comm: [kvm]
+    cmdline: ['-id (?P<id>\d+)']
+
+  - name: cluster
+    comm: [pmxcfs, corosync]
+
+  - name: api
+    comm: [pvedaemon, pveproxy, spiceproxy]
+
+  - name: pve services
+    comm: [pvestatd, pvescheduler, pve-firewall, pvefw-logger, pve-ha-crm, pve-ha-lrm, pve-lxc-syscall, lxcfs, lxc-monitord]
+
+  # comm is cut to 15 characters.
+  - name: monitoring
+    comm: [beszel-agent, node_exporter, process-exporte, alloy]

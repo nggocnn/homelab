@@ -1,0 +1,6 @@
+---
+pihole_exporter_version: "1.2.0"
+pihole_exporter_port: 9617
+
+# The Pi-hole admin password, shared with the pihole role.
+pihole_exporter_password_file: "{{ playbook_dir }}/../pihole-password"

@@ -1,0 +1,67 @@
+# Managed by Ansible. The cluster and its services; host health is Beszel's, reachability is Uptime Kuma's.
+#
+# Every node answers for the whole cluster, so each cluster-wide series arrives once per
+# node. `max by (id)` collapses those copies - and keeps answering while a node is down.
+groups:
+  - name: cluster
+    rules:
+      - alert: ClusterNotQuorate
+        expr: max by (id) (pve_up{id=~"cluster/.*"}) == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{% raw %}{{ $labels.id }}{% endraw %} has lost quorum"
+          description: "/etc/pve is read-only on the minority side until quorum returns."
+
+      - alert: NodeOffline
+        expr: max by (id) (pve_up{id=~"node/.*"}) == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{% raw %}{{ $labels.id }}{% endraw %} is offline in the cluster"
+
+      # onboot guests only: a container stopped on purpose is not an alert.
+      - alert: GuestDown
+        expr: >-
+          max by (id) (pve_up{id=~"(lxc|qemu)/.*"}) == 0
+          and on (id) max by (id) (pve_onboot_status) == 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{% raw %}{{ $labels.id }}{% endraw %} is not running"
+
+      - alert: StorageFilling
+        expr: >-
+          max by (id) (pve_disk_usage_bytes{id=~"storage/.*"})
+          / max by (id) (pve_disk_size_bytes{id=~"storage/.*"})
+          > {{ prometheus_storage_full_ratio }}
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{% raw %}{{ $labels.id }}{% endraw %} is {% raw %}{{ $value | humanizePercentage }}{% endraw %} full"
+
+      - alert: GuestNotBackedUp
+        expr: max (pve_not_backed_up_total) > 0
+        for: 6h
+        labels: { severity: warning }
+        annotations:
+          summary: "{% raw %}{{ $value }}{% endraw %} guests are covered by no backup job"
+
+  - name: dns
+    rules:
+      # Disabled from the web UI with no timer, then forgotten.
+      - alert: PiholeBlockingDisabled
+        expr: pihole_status == 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Blocking is off on {% raw %}{{ $labels.instance }}{% endraw %}"
+
+  - name: scrape
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{% raw %}{{ $labels.job }}{% endraw %} on {% raw %}{{ $labels.instance }}{% endraw %} is not answering"

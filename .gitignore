@@ -19,5 +19,6 @@ infra/ansible/pihole-password
 # Monitoring logins and the Telegram bot token and chat ID — generated locally, never committed.
 infra/ansible/beszel-password
 infra/ansible/kuma-password
+infra/ansible/grafana-password
 infra/ansible/telegram-bot-token
 infra/ansible/telegram-chat-id

@@ -1,0 +1,21 @@
+[Unit]
+Description=Prometheus process exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+ExecStart=/usr/local/bin/process-exporter \
+  -config.path {{ process_exporter_config }} \
+  -threads=false \
+  -web.listen-address {{ ansible_host }}:{{ process_exporter_port }}
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

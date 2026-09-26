@@ -1,0 +1,6 @@
+[Service]
+Environment=GF_SECURITY_ADMIN_PASSWORD={{ _grafana_password }}
+Environment=GF_SERVER_HTTP_PORT={{ grafana_port }}
+Environment=GF_SERVER_ROOT_URL={{ grafana_url }}
+Environment=GF_ANALYTICS_REPORTING_ENABLED=false
+Environment=GF_ANALYTICS_CHECK_FOR_UPDATES=false

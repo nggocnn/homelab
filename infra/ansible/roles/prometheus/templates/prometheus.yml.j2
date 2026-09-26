@@ -1,0 +1,73 @@
+# Managed by Ansible.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["{{ alertmanager_listen }}"]
+
+rule_files:
+  - {{ prometheus_config_dir }}/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["{{ alertmanager_listen }}"]
+
+  # One exporter, one scrape per node: target names the node, the exporter calls its API.
+  # Slower than the rest - the config collector makes one API call per guest.
+  - job_name: pve
+    scrape_interval: 60s
+    metrics_path: /pve
+    params:
+      cluster: ["1"]
+      node: ["1"]
+    static_configs:
+{% for h in groups['pve'] %}
+      - targets: ["{{ hostvars[h].ansible_host }}"]
+        labels: { instance: {{ h }} }
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: {{ pve_exporter_listen }}
+
+  # CPU package power, from Intel RAPL.
+  - job_name: node_power
+    static_configs:
+{% for h in groups['pve'] %}
+      - targets: ["{{ hostvars[h].ansible_host }}:{{ node_exporter_port }}"]
+        labels: { instance: {{ h }} }
+{% endfor %}
+
+  - job_name: process
+    static_configs:
+{% for h in groups['pve'] %}
+      - targets: ["{{ hostvars[h].ansible_host }}:{{ process_exporter_port }}"]
+        labels: { instance: {{ h }} }
+{% endfor %}
+
+  - job_name: pihole
+    static_configs:
+{% for h in groups['dns'] %}
+      - targets: ["{{ hostvars[h].ansible_host }}:{{ pihole_exporter_port }}"]
+        labels: { instance: {{ h }} }
+{% endfor %}
+
+  - job_name: loki
+    static_configs:
+      - targets: ["127.0.0.1:{{ loki_port }}"]
+
+  - job_name: alloy
+    static_configs:
+{% for h in groups['pve'] %}
+      - targets: ["{{ hostvars[h].ansible_host }}:{{ alloy_port }}"]
+        labels: { instance: {{ h }} }
+{% endfor %}

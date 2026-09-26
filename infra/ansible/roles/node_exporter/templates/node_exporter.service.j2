@@ -1,0 +1,27 @@
+[Unit]
+Description=Prometheus node exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node-exp
+ExecStart=/usr/local/bin/node_exporter \
+  --collector.disable-defaults \
+{% for c in node_exporter_collectors %}
+  --collector.{{ c }} \
+{% endfor %}
+  --web.listen-address {{ ansible_host }}:{{ node_exporter_port }}
+Restart=on-failure
+RestartSec=5
+
+# energy_uj is root-readable only since the Platypus fix; the read needs the capability.
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

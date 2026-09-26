@@ -1,0 +1,30 @@
+---
+# Prometheus, Alertmanager and Grafana on monitor-01, with the exporters they scrape.
+# The cluster and its services: quorum, guests, storage, backups - plus CPU power and
+# per-process history from the nodes, and Pi-hole's stats from the DNS containers.
+# Host health is Beszel's, reachability Uptime Kuma's.
+#
+#   (umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)
+#   ansible-playbook playbooks/22-prometheus.yml
+- name: Node exporters
+  hosts: pve
+  gather_facts: false
+  roles:
+    - node_exporter
+    - process_exporter
+
+- name: Pi-hole exporters
+  hosts: dns
+  gather_facts: false
+  roles:
+    - pihole_exporter
+
+- name: Monitoring server
+  hosts: monitor
+  gather_facts: false
+  roles:
+    - apt_packages
+    - pve_exporter
+    - prometheus
+    - alertmanager
+    - grafana

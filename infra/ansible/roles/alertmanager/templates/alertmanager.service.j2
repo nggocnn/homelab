@@ -1,0 +1,23 @@
+[Unit]
+Description=Alertmanager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=alertmanager
+Group=alertmanager
+ExecStart={{ alertmanager_dir }}/alertmanager \
+  --config.file {{ alertmanager_config_dir }}/alertmanager.yml \
+  --storage.path {{ alertmanager_data_dir }} \
+  --web.listen-address {{ alertmanager_listen }}
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths={{ alertmanager_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

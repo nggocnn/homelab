@@ -1,0 +1,19 @@
+[Unit]
+Description=Prometheus Pi-hole exporter
+Wants=network-online.target
+After=network-online.target pihole-FTL.service
+
+[Service]
+User=pihole-exp
+EnvironmentFile=/etc/default/pihole-exporter
+ExecStart=/usr/local/bin/pihole_exporter
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

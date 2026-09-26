@@ -1,0 +1,18 @@
+# Managed by Ansible.
+route:
+  receiver: telegram
+  group_by: [alertname]
+  group_wait: {{ alertmanager_group_wait }}
+  group_interval: {{ alertmanager_group_interval }}
+  repeat_interval: {{ alertmanager_repeat_interval }}
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: {{ alertmanager_config_dir }}/telegram-token
+        chat_id: {{ telegram_chat_id | int }}
+        parse_mode: HTML
+        message: |-
+          {% raw %}{{ if eq .Status "firing" }}🔴{{ else }}🟢{{ end }} <b>{{ .CommonLabels.alertname }}</b> ({{ .Status }})
+          {{ range .Alerts }}{{ .Annotations.summary }}
+          {{ end }}{% endraw %}

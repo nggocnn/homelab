@@ -1,0 +1,7 @@
+---
+grafana_port: 3000
+grafana_url: "http://{{ inventory_hostname }}.{{ pve_domain }}:{{ grafana_port }}"
+grafana_dashboard_dir: /var/lib/grafana/dashboards
+
+# admin's password, seeded on the first start. The file holds the plaintext.
+grafana_password_file: "{{ playbook_dir }}/../grafana-password"

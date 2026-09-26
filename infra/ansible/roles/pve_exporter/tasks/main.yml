@@ -1,0 +1,135 @@
+---
+# The exporter runs here and talks to the cluster API; the token is created on the primary.
+# One API call per guest per scrape, so the pve job scrapes slower than the rest.
+
+- name: Install python3-venv and python3-packaging
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-packaging   # the pip module imports it on the target
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the pve-exporter user
+  ansible.builtin.user:
+    name: pve-exporter
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Install prometheus-pve-exporter {{ pve_exporter_version }}
+  ansible.builtin.pip:
+    name: prometheus-pve-exporter=={{ pve_exporter_version }}
+    virtualenv: "{{ pve_exporter_dir }}"
+    virtualenv_command: python3 -m venv
+  notify: restart pve-exporter
+
+- name: Create the config directory
+  ansible.builtin.file:
+    path: "{{ pve_exporter_config | dirname }}"
+    state: directory
+    owner: pve-exporter
+    group: pve-exporter
+    mode: "0750"
+
+- name: Look for the token config
+  ansible.builtin.stat:
+    path: "{{ pve_exporter_config }}"
+  register: _pve_exporter_cfg
+
+- name: Mint the API token
+  when: not _pve_exporter_cfg.stat.exists
+  block:
+    - name: List the API users
+      ansible.builtin.command:
+        cmd: pvesh get /access/users --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_users
+      changed_when: false
+      check_mode: false
+
+    - name: Create {{ pve_exporter_user }}
+      ansible.builtin.command:
+        cmd: pveum user add {{ pve_exporter_user }} --comment "Prometheus, read-only"
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: pve_exporter_user not in (_pve_users.stdout | from_json | map(attribute='userid'))
+      changed_when: true
+
+    - name: Read the ACL
+      ansible.builtin.command:
+        cmd: pvesh get /access/acl --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_acl
+      changed_when: false
+      check_mode: false
+
+    # Read-only on the whole tree: the exporter reads every node, guest and storage.
+    - name: Grant PVEAuditor on /
+      ansible.builtin.command:
+        cmd: pveum acl modify / --user {{ pve_exporter_user }} --role PVEAuditor
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: >-
+        _pve_acl.stdout | from_json
+        | selectattr('ugid', 'equalto', pve_exporter_user)
+        | selectattr('roleid', 'equalto', 'PVEAuditor')
+        | selectattr('path', 'equalto', '/')
+        | list | length == 0
+      changed_when: true
+
+    # The secret is shown once, at creation. Without the config file there is nothing to
+    # recover, so an orphaned token is dropped and a fresh one minted.
+    - name: List the tokens
+      ansible.builtin.command:
+        cmd: pvesh get /access/users/{{ pve_exporter_user }}/token --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_tokens
+      changed_when: false
+      check_mode: false
+
+    - name: Drop the orphaned token
+      ansible.builtin.command:
+        cmd: pveum user token remove {{ pve_exporter_user }} {{ pve_exporter_token }}
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: pve_exporter_token in (_pve_tokens.stdout | from_json | map(attribute='tokenid'))
+      changed_when: true
+
+    # --privsep 0: the token carries the user's privileges, which are read-only already.
+    - name: Create the token
+      ansible.builtin.command:
+        cmd: pveum user token add {{ pve_exporter_user }} {{ pve_exporter_token }} --privsep 0 --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_token_new
+      changed_when: true
+      no_log: true
+
+    - name: Keep the secret
+      ansible.builtin.set_fact:
+        _pve_exporter_secret: "{{ (_pve_token_new.stdout | from_json).value }}"
+      no_log: true
+
+    - name: Write the config
+      ansible.builtin.template:
+        src: pve.yml.j2
+        dest: "{{ pve_exporter_config }}"
+        owner: pve-exporter
+        group: pve-exporter
+        mode: "0600"
+      no_log: true
+      notify: restart pve-exporter
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: pve-exporter.service.j2
+    dest: /etc/systemd/system/pve-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart pve-exporter
+
+- name: Enable and start pve-exporter
+  ansible.builtin.systemd_service:
+    name: pve-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
