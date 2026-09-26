@@ -1,0 +1,4 @@
+---
+loki_port: 3100
+loki_data_dir: /var/lib/loki
+loki_retention: 30d
