@@ -1,0 +1,112 @@
+---
+# Grafana from its own apt repository. The datasource and the dashboards are provisioned
+# from files, so the UI has nothing to set up after a rebuild.
+
+- name: Read the admin password
+  ansible.builtin.set_fact:
+    _grafana_password: "{{ lookup('ansible.builtin.file', grafana_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _grafana_password | length >= 8
+    fail_msg: "Missing or short {{ grafana_password_file | realpath }} - create it with: read -rsp 'Grafana password: ' p && printf '%s' \"$p\" > grafana-password"
+    quiet: true
+
+- name: Install the Grafana package signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+# update_cache on the install itself, so a run that died after adding the repo still sees the package.
+- name: Install grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+
+- name: Provision the datasource
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Create the dashboard directory
+  ansible.builtin.file:
+    path: "{{ grafana_dashboard_dir }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+- name: Provision the dashboard provider
+  ansible.builtin.template:
+    src: dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/homelab.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Copy the dashboards
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: "{{ grafana_dashboard_dir }}/"
+    owner: grafana
+    group: grafana
+    mode: "0644"
+
+- name: Find the dashboards on disk
+  ansible.builtin.find:
+    paths: "{{ grafana_dashboard_dir }}"
+    patterns: "*.json"
+  register: _grafana_on_disk
+
+# Grafana drops a provisioned dashboard when its file goes.
+- name: Remove the ones no longer shipped
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _grafana_on_disk.files | map(attribute='path') | reject('in', _grafana_shipped) | list }}"
+  vars:
+    _grafana_shipped: "{{ lookup('ansible.builtin.fileglob', role_path ~ '/files/dashboards/*.json', wantlist=True) | map('basename') | map('regex_replace', '^', grafana_dashboard_dir ~ '/') | list }}"
+
+- name: Create the unit drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/grafana-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Set the admin password and the URL
+  ansible.builtin.template:
+    src: override.conf.j2
+    dest: /etc/systemd/system/grafana-server.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart grafana
+
+- name: Enable and start grafana-server
+  ansible.builtin.systemd_service:
+    name: grafana-server
+    enabled: true
+    state: started
+    daemon_reload: true

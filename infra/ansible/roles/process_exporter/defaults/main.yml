@@ -1,0 +1,4 @@
+---
+process_exporter_version: "0.8.7"
+process_exporter_port: 9256
+process_exporter_config: /etc/process-exporter/config.yml

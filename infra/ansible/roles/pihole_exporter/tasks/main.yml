@@ -1,0 +1,58 @@
+---
+# Reads the local Pi-hole's API on each scrape. One session, reused until it expires.
+
+- name: Read the Pi-hole password
+  ansible.builtin.set_fact:
+    _pihole_exporter_password: "{{ lookup('ansible.builtin.file', pihole_exporter_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _pihole_exporter_password | length > 0
+    fail_msg: "Missing {{ pihole_exporter_password_file | realpath }} - the same file the pihole role reads."
+    quiet: true
+
+- name: Create the pihole-exp user
+  ansible.builtin.user:
+    name: pihole-exp
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+# A single binary, no archive; the checksum makes a version bump re-download it.
+- name: Install the Pi-hole exporter {{ pihole_exporter_version }}
+  ansible.builtin.get_url:
+    url: https://github.com/eko/pihole-exporter/releases/download/v{{ pihole_exporter_version }}/pihole_exporter-linux-amd64
+    checksum: sha256:https://github.com/eko/pihole-exporter/releases/download/v{{ pihole_exporter_version }}/pihole_exporter-linux-amd64.sha256.txt
+    dest: /usr/local/bin/pihole_exporter
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart pihole-exporter
+
+# The password goes in the environment, not on the command line where ps shows it.
+- name: Write the environment
+  ansible.builtin.template:
+    src: pihole-exporter.env.j2
+    dest: /etc/default/pihole-exporter
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart pihole-exporter
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: pihole-exporter.service.j2
+    dest: /etc/systemd/system/pihole-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart pihole-exporter
+
+- name: Enable and start pihole-exporter
+  ansible.builtin.systemd_service:
+    name: pihole-exporter
+    enabled: true
+    state: started
+    daemon_reload: true

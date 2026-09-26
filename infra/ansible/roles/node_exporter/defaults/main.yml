@@ -1,0 +1,5 @@
+---
+node_exporter_version: "1.12.1"
+node_exporter_port: 9100
+# Power only. CPU, memory, disks, temperatures and units are Beszel's side of the split.
+node_exporter_collectors: [rapl]

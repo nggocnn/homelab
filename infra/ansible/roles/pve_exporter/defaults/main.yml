@@ -1,0 +1,9 @@
+---
+pve_exporter_version: "3.10.0"
+pve_exporter_dir: /opt/pve-exporter
+pve_exporter_listen: "127.0.0.1:9221"   # scraped by the Prometheus on this host alone
+
+# Read-only API user and token, created on the cluster primary.
+pve_exporter_user: prometheus@pve
+pve_exporter_token: prometheus
+pve_exporter_config: /etc/pve-exporter/pve.yml

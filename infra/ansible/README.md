@@ -44,6 +44,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers (`pct set`) at `lxc_resolvers`. Last, because creation uses the gateway - on a first build `dns_vip` does not exist yet. A container applies it on its next start. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node, and alerts to Telegram. Node hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
+| `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -68,7 +69,22 @@ read -rp 'Telegram chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c 
 ansible-playbook playbooks/20-beszel.yml
 (umask 077; read -rsp 'Uptime Kuma password: ' p && printf '%s' "$p" > kuma-password; unset p)   # the admin made on first visit
 ansible-playbook playbooks/21-uptime-kuma.yml
+(umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)   # gitignored
+ansible-playbook playbooks/22-prometheus.yml
 ```
+
+### Monitoring
+
+Three tools, split so none repeats another. Each alerts to Telegram on its own.
+
+| Where | Watches |
+| --- | --- |
+| Beszel, `beszel-01:8090` | The nodes themselves: CPU, memory, disks, network, temperatures, SMART, failed units. |
+| Prometheus, `monitor-01:9090`, Grafana on `:3000` | The cluster and its services: quorum, node and guest state, storage, backup coverage - plus CPU package power (Intel RAPL) and per-process history from the nodes, and Pi-hole's query stats. |
+| Uptime Kuma, `kuma-01:3001` | Whether an address answers, from outside: the two VIPs, the containers, the tunnel. |
+
+The node exporter runs with `--collector.disable-defaults --collector.rapl`, so it reports power
+and nothing else - the rest of the host belongs to Beszel.
 
 ### Cluster VIP
 

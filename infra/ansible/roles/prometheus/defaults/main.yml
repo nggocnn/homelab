@@ -1,0 +1,19 @@
+---
+prometheus_version: "3.14.0"
+prometheus_dir: /opt/prometheus
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_listen: "0.0.0.0:9090"
+prometheus_retention: 90d
+
+# Scraped on the nodes. The node exporter is power only - the rest of the host is Beszel's.
+node_exporter_port: 9100
+process_exporter_port: 9256
+pihole_exporter_port: 9617
+
+alertmanager_listen: "127.0.0.1:9093"
+loki_port: 3100
+alloy_port: 12345
+
+# Thresholds for the rules in rules.yml.j2.
+prometheus_storage_full_ratio: 0.85

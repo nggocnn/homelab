@@ -1,0 +1,56 @@
+---
+# Reads /proc for every process, so it runs as root. Everything else it can do is switched off.
+# A few named groups, not one per executable: the host's own services and one per guest.
+
+- name: Create the config directory
+  ansible.builtin.file:
+    path: "{{ process_exporter_config | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Read the installed version
+  ansible.builtin.command:
+    cmd: /usr/local/bin/process-exporter -version
+  register: _process_exporter_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install the process exporter {{ process_exporter_version }}
+  ansible.builtin.unarchive:
+    src: https://github.com/ncabatoff/process-exporter/releases/download/v{{ process_exporter_version }}/process-exporter-{{ process_exporter_version }}.linux-amd64.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    include: ["process-exporter-{{ process_exporter_version }}.linux-amd64/process-exporter"]
+    owner: root
+    group: root
+  when: process_exporter_version not in _process_exporter_installed.stderr | default('') + _process_exporter_installed.stdout | default('')
+  notify: restart process-exporter
+
+- name: Write the config
+  ansible.builtin.copy:
+    src: config.yml
+    dest: "{{ process_exporter_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart process-exporter
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: process-exporter.service.j2
+    dest: /etc/systemd/system/process-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart process-exporter
+
+- name: Enable and start process-exporter
+  ansible.builtin.systemd_service:
+    name: process-exporter
+    enabled: true
+    state: started
+    daemon_reload: true

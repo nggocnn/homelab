@@ -1,0 +1,8 @@
+# Managed by Ansible.
+apiVersion: 1
+providers:
+  - name: homelab
+    type: file
+    disableDeletion: false   # true would keep a dashboard whose file is gone
+    options:
+      path: {{ grafana_dashboard_dir }}
