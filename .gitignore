@@ -23,3 +23,6 @@ infra/ansible/kuma-password
 infra/ansible/grafana-password
 infra/ansible/telegram-bot-token
 infra/ansible/telegram-chat-id
+
+# VM user password, plaintext for sudo - generated locally, never committed.
+infra/ansible/vm-password

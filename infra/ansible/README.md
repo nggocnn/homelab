@@ -46,6 +46,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
+| `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with key-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 12, 20 and 21 for its DNS record, bastion access and monitoring. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -73,6 +74,8 @@ ansible-playbook playbooks/21-uptime-kuma.yml
 (umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)   # gitignored
 ansible-playbook playbooks/22-prometheus.yml
 ansible-playbook playbooks/23-loki.yml
+(umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
+ansible-playbook playbooks/30-docker.yml
 ```
 
 ### Monitoring

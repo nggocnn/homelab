@@ -1,0 +1,6 @@
+#cloud-config
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+packages:
+  - qemu-guest-agent
+runcmd:
+  - systemctl enable --now qemu-guest-agent

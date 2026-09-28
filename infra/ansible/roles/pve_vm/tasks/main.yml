@@ -1,0 +1,162 @@
+---
+# Create-only: a VMID that already exists anywhere in the cluster is left as it is.
+# Tasks run on the node or the controller, never inside the VM.
+
+- name: List the cluster's guests
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/resources --type vm --output-format json
+  delegate_to: "{{ vm_node }}"
+  register: _guests
+  changed_when: false
+  check_mode: false
+
+- name: Find VMID {{ vm_vmid }}
+  ansible.builtin.set_fact:
+    _vm: "{{ _guests.stdout | from_json | selectattr('vmid', 'equalto', vm_vmid | int) | first | default({}) }}"
+
+- name: Assert VMID {{ vm_vmid }} is free or already {{ inventory_hostname }}
+  ansible.builtin.assert:
+    that: _vm | length == 0 or (_vm.type == 'qemu' and _vm.name == inventory_hostname)
+    fail_msg: "VMID {{ vm_vmid }} is taken by {{ _vm.type | default('') }} '{{ _vm.name | default('') }}'."
+    quiet: true
+
+# --- vendor snippet -----------------------------------------------------------
+# storage.cfg is cluster-wide, so once; the file is per node, so on every node a VM can migrate to.
+- name: Read the {{ vm_snippet_storage }} storage
+  ansible.builtin.command:
+    cmd: pvesh get /storage/{{ vm_snippet_storage }} --output-format json
+  delegate_to: "{{ vm_node }}"
+  run_once: true
+  register: _storage
+  changed_when: false
+  check_mode: false
+
+- name: Allow snippets on {{ vm_snippet_storage }}
+  ansible.builtin.command:
+    cmd: pvesm set {{ vm_snippet_storage }} --content {{ (_content + ['snippets']) | join(',') }}
+  vars:
+    _content: "{{ (_storage.stdout | from_json).content.split(',') }}"
+  when: "'snippets' not in _content"
+  delegate_to: "{{ vm_node }}"
+  run_once: true
+
+- name: Resolve the snippet path
+  ansible.builtin.command:
+    cmd: pvesm path {{ vm_snippet_storage }}:snippets/{{ vm_snippet }}
+  delegate_to: "{{ vm_node }}"
+  run_once: true
+  register: _snippet_path
+  changed_when: false
+  check_mode: false
+
+- name: Create the snippets directory
+  ansible.builtin.file:
+    path: "{{ _snippet_path.stdout | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['pve'] }}"
+  run_once: true
+
+- name: Install the vendor snippet
+  ansible.builtin.copy:
+    src: vm-vendor.yaml
+    dest: "{{ _snippet_path.stdout }}"
+    owner: root
+    group: root
+    mode: "0644"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['pve'] }}"
+  run_once: true
+
+# --- create -------------------------------------------------------------------
+- name: Create {{ inventory_hostname }} on {{ vm_node }}
+  when: _vm | length == 0
+  delegate_to: "{{ vm_node }}"
+  block:
+    - name: Stage the SSH public keys
+      ansible.builtin.copy:
+        dest: /tmp/vm-{{ vm_vmid }}.pub
+        content: "{{ vm_authorized_keys | join('\n') }}\n"
+        mode: "0600"
+
+    - name: Create the VM
+      ansible.builtin.command:
+        cmd: >-
+          qm create {{ vm_vmid }}
+          --name {{ inventory_hostname }}
+          --ostype l26
+          --cpu {{ vm_cpu }}
+          --cores {{ vm_cores }}
+          --memory {{ vm_memory_mb }}
+          --scsihw virtio-scsi-single
+          --scsi0 {{ vm_storage }}:0,import-from={{ vm_image }},discard=on,iothread=1,ssd=1
+          --ide2 {{ vm_storage }}:cloudinit
+          --boot order=scsi0
+          --serial0 socket
+          --vga serial0
+          --net0 virtio={{ vm_hwaddr }},bridge={{ vm_bridge }}
+          --agent enabled=1
+          --ipconfig0 ip={{ vm_ip }}/{{ vm_prefix }},gw={{ vm_gateway }}
+          --nameserver {{ vm_nameserver }}
+          --searchdomain {{ pve_domain }}
+          --ciuser {{ vm_user }}
+          --sshkeys /tmp/vm-{{ vm_vmid }}.pub
+          --ciupgrade 1
+          --cicustom vendor={{ vm_snippet_storage }}:snippets/{{ vm_snippet }}
+          {% if vm_pool %}--pool {{ vm_pool }}{% endif %}
+          --onboot 1
+      register: _create
+
+    - name: Grow the disk to {{ vm_disk_gb }} GB
+      ansible.builtin.command:
+        cmd: qm disk resize {{ vm_vmid }} scsi0 {{ vm_disk_gb }}G
+
+    - name: Start the VM
+      ansible.builtin.command:
+        cmd: qm start {{ vm_vmid }}
+  always:
+    - name: Remove the staged keys
+      ansible.builtin.file:
+        path: /tmp/vm-{{ vm_vmid }}.pub
+        state: absent
+
+# host_key_checking is on, so later plays need the key. Read through the guest agent, not over the wire.
+- name: Trust the SSH host key of {{ inventory_hostname }}
+  when: _create is changed or _vm.status | default('') == 'running'
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  block:
+    # First boot upgrades every package before the agent is installed.
+    - name: Wait for the guest agent
+      ansible.builtin.command:
+        cmd: qm agent {{ vm_vmid }} ping
+      register: _agent
+      until: _agent.rc == 0
+      retries: 90
+      delay: 10
+      changed_when: false
+      check_mode: false
+
+    - name: Read the host key
+      ansible.builtin.command:
+        cmd: qm guest exec {{ vm_vmid }} -- cat /etc/ssh/ssh_host_ed25519_key.pub
+      register: _hostkey
+      changed_when: false
+      check_mode: false
+
+    - name: Add it to the controller's known_hosts
+      ansible.builtin.known_hosts:
+        name: "{{ vm_ip }}"
+        key: "{{ vm_ip }} {{ (_hostkey.stdout | from_json)['out-data'] | trim | regex_replace('^(\\S+ \\S+).*$', '\\1') }}"
+        state: present
+      delegate_to: localhost
+      throttle: 1 # one file on the controller, parallel writes drop entries
+
+    - name: Wait for SSH
+      ansible.builtin.wait_for:
+        host: "{{ vm_ip }}"
+        port: 22
+        timeout: 120
+      delegate_to: localhost

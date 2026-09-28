@@ -1,0 +1,21 @@
+---
+# docker-01: an Ubuntu 24.04 VM from the cloud image, with Docker Engine.
+# After 13-dns.yml: the VM is created with dns_vip. Run 02-images.yml first for the image.
+#
+#   (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)
+#   ansible-playbook playbooks/30-docker.yml
+#   ansible-playbook playbooks/30-docker.yml -e apt_upgrade=true
+- name: Docker VMs
+  hosts: docker
+  gather_facts: false
+  roles:
+    - pve_vm
+
+- name: Docker Engine
+  hosts: docker
+  gather_facts: false
+  roles:
+    - guest_user
+    - apt_packages
+    - guest_ssh
+    - docker

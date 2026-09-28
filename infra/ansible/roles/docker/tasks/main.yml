@@ -1,0 +1,48 @@
+---
+# Docker Engine from Docker's apt repository, not Ubuntu's docker.io.
+
+- name: Read the release codename
+  ansible.builtin.command:
+    cmd: lsb_release -cs
+  register: _codename
+  changed_when: false
+  check_mode: false
+
+- name: Add the Docker repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: ["{{ _codename.stdout }}"]
+    components: [stable]
+    architectures: [amd64]
+    signed_by: https://download.docker.com/linux/ubuntu/gpg
+  register: _docker_repo
+
+- name: Install Docker Engine
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: "{{ _docker_repo is changed }}"
+
+- name: Write daemon.json
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart docker
+
+- name: Enable and start docker
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Add users to the docker group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"

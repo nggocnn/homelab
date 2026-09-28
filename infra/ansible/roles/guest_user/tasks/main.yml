@@ -1,0 +1,47 @@
+---
+# First boot upgrades packages; apt is locked until cloud-init is done. 2 = done with warnings.
+- name: Wait for cloud-init
+  ansible.builtin.command:
+    cmd: cloud-init status --wait
+  register: _cloud_init
+  changed_when: false
+  failed_when: _cloud_init.rc not in [0, 2]
+  check_mode: false
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _guest_password: "{{ lookup('ansible.builtin.file', guest_user_password_file, errors='ignore') | default('', true) }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _guest_password | length >= 8
+    fail_msg: "Missing or short {{ guest_user_password_file | realpath }} - create it with: read -rsp 'VM password: ' p && printf '%s' \"$p\" > vm-password"
+    quiet: true
+
+# Salt from the hostname, so the hash is stable and an unchanged password reports ok.
+- name: Set {{ guest_user }}'s password and sudo
+  ansible.builtin.user:
+    name: "{{ guest_user }}"
+    password: "{{ _guest_password | password_hash('sha512', (inventory_hostname | hash('sha256'))[:16]) }}"
+    update_password: always
+    shell: /bin/bash
+    groups: sudo
+    append: true
+  no_log: true
+
+- name: Authorise SSH keys for {{ guest_user }}
+  ansible.posix.authorized_key:
+    user: "{{ guest_user }}"
+    key: "{{ item }}"
+    state: present
+    exclusive: false
+  loop: "{{ guest_user_authorized_keys }}"
+  loop_control:
+    label: "{{ item.split() | last }}"
+
+# cloud-init's NOPASSWD rule. From here sudo asks for the password above.
+- name: Remove passwordless sudo
+  ansible.builtin.file:
+    path: /etc/sudoers.d/90-cloud-init-users
+    state: absent

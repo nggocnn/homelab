@@ -1,0 +1,15 @@
+---
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Added to the docker group, which is root-equivalent.
+docker_users:
+  - "{{ ansible_user }}"
+
+docker_daemon:
+  log-driver: json-file
+  log-opts: { max-size: 10m, max-file: "3" }

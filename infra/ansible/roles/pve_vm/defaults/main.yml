@@ -1,0 +1,28 @@
+---
+# Per host in inventory: ansible_host and vm_node. VMID = last octet of ansible_host.
+vm_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
+vm_vmid: "{{ vm_ip.split('.')[-1] | int }}"
+vm_prefix: "{{ pve_subnet_cidr.split('/')[1] }}"
+
+# Proxmox OUI + VMID, so a rebuilt VM keeps its MAC.
+vm_hwaddr: "{{ 'BC:24:11:00:%02X:%02X' | format(vm_vmid | int // 256, vm_vmid | int % 256) }}"
+
+# A pve_cloud_images entry, imported as the boot disk and grown to vm_disk_gb.
+vm_image: local:import/ubuntu-24.04-server-cloudimg-amd64-20260926.qcow2
+vm_storage: local-lvm
+vm_disk_gb: 16
+vm_cores: 2
+vm_memory_mb: 2048
+vm_cpu: x86-64-v2-AES
+vm_bridge: vmbr0
+vm_gateway: "{{ pve_gateway }}"
+vm_nameserver: "{{ pve_gateway }}"
+vm_pool: ""
+
+# cloud-init: the login user and its keys, and a full upgrade on first boot.
+vm_user: "{{ ansible_user }}"
+vm_authorized_keys: []
+
+# Vendor data on every node: installs qemu-guest-agent, which the host key read needs.
+vm_snippet_storage: local
+vm_snippet: vm-vendor.yaml

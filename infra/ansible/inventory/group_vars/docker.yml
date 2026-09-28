@@ -1,0 +1,9 @@
+---
+# --- vm ---------------------------------------------------------------------
+vm_pool: container-platform
+vm_cores: 4
+vm_memory_mb: 8192
+vm_disk_gb: 64
+
+# --- monitoring ---------------------------------------------------------------
+beszel_agent_docker: true   # per-container stats in Beszel
