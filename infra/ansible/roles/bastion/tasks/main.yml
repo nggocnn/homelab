@@ -55,7 +55,7 @@
     group: "{{ bastion_user }}"
     mode: "0600"
 
-# Created once, then left alone. 12-bastion.yml authorises the public half on the containers.
+# Created once, then left alone. 12-bastion.yml authorises the public half on the guests.
 - name: Generate the container key
   community.crypto.openssh_keypair:
     path: "{{ bastion_identity_file }}"
