@@ -11,9 +11,13 @@
       - pve_isos | selectattr('url', 'defined') | selectattr('src', 'defined') | list | length == 0
       - pve_isos | rejectattr('url', 'defined') | rejectattr('src', 'defined') | list | length == 0
       - pve_isos | selectattr('url', 'defined') | rejectattr('checksum', 'defined') | list | length == 0
+      - pve_cloud_images | rejectattr('name', 'defined') | list | length == 0
+      - pve_cloud_images | selectattr('url', 'defined') | selectattr('src', 'defined') | list | length == 0
+      - pve_cloud_images | rejectattr('url', 'defined') | rejectattr('src', 'defined') | list | length == 0
+      - pve_cloud_images | selectattr('url', 'defined') | rejectattr('checksum', 'defined') | list | length == 0
     fail_msg: >-
-      A template is a pveam name or { name, src, checksum? }. An ISO has a name and exactly one of
-      url (with checksum) or src.
+      A template is a pveam name or { name, src, checksum? }. An ISO or cloud image has a name and
+      exactly one of url (with checksum) or src.
     quiet: true
   run_once: true
 
@@ -51,37 +55,15 @@
     loop_var: _image
     label: "{{ _image.name }}"
 
-# --- ISOs ---------------------------------------------------------------------
-- name: Resolve the ISO paths
-  ansible.builtin.command:
-    cmd: pvesm path {{ (pve_images_storage ~ ':iso/' ~ item.name) | quote }}
-  loop: "{{ pve_isos | selectattr('url', 'defined') | list }}"
-  loop_control:
-    label: "{{ item.name }}"
-  register: _iso_paths
-  changed_when: false
-  check_mode: false
-
-# Skipped when the file already matches the checksum. tmp_dest keeps the partial file off the tmpfs /tmp.
-- name: Download ISOs
-  ansible.builtin.get_url:
-    url: "{{ item.item.url }}"
-    dest: "{{ item.stdout }}"
-    checksum: "{{ item.item.checksum }}"
-    tmp_dest: "{{ item.stdout | dirname }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop: "{{ _iso_paths.results }}"
-  loop_control:
-    label: "{{ item.item.name }}"
-  throttle: "{{ pve_images_throttle }}"
-
-- name: Push local ISOs
-  ansible.builtin.include_tasks: push.yml
+# --- ISOs and VM disk images ---------------------------------------------------
+- name: ISOs
+  ansible.builtin.include_tasks: files.yml
   vars:
-    _volid: "{{ pve_images_storage }}:iso/{{ _image.name }}"
-  loop: "{{ pve_isos | selectattr('src', 'defined') | list }}"
-  loop_control:
-    loop_var: _image
-    label: "{{ _image.name }}"
+    _content: iso
+    _images: "{{ pve_isos }}"
+
+- name: VM disk images
+  ansible.builtin.include_tasks: files.yml
+  vars:
+    _content: import
+    _images: "{{ pve_cloud_images }}"

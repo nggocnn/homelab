@@ -1,0 +1,36 @@
+---
+# Download or push _images to {{ pve_images_storage }}:{{ _content }}/. Expects _content and _images.
+
+- name: Resolve the {{ _content }} paths
+  ansible.builtin.command:
+    cmd: pvesm path {{ (pve_images_storage ~ ':' ~ _content ~ '/' ~ item.name) | quote }}
+  loop: "{{ _images | selectattr('url', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _paths
+  changed_when: false
+  check_mode: false
+
+# Skipped when the file already matches the checksum. tmp_dest keeps the partial file off the tmpfs /tmp.
+- name: Download {{ _content }} files
+  ansible.builtin.get_url:
+    url: "{{ item.item.url }}"
+    dest: "{{ item.stdout }}"
+    checksum: "{{ item.item.checksum }}"
+    tmp_dest: "{{ item.stdout | dirname }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ _paths.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  throttle: "{{ pve_images_throttle }}"
+
+- name: Push local {{ _content }} files
+  ansible.builtin.include_tasks: push.yml
+  vars:
+    _volid: "{{ pve_images_storage }}:{{ _content }}/{{ _image.name }}"
+  loop: "{{ _images | selectattr('src', 'defined') | list }}"
+  loop_control:
+    loop_var: _image
+    label: "{{ _image.name }}"
