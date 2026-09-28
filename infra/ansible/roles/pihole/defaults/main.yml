@@ -26,6 +26,10 @@ pihole_extra_records: []
 pihole_adlists:
   - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 
+# Blocked sites. One per line: a domain blocks it and its subdomains, a bare
+# word blocks every name containing it, a URL is added as a blocklist.
+pihole_blocked_sites_file: "{{ playbook_dir }}/../blocked-sites"
+
 # `pihole setpassword` salts afresh every time, so it runs on first install only.
 # The file holds the plaintext; it is read on the controller and never echoed.
 # Force a change with -e pihole_force_password=true.

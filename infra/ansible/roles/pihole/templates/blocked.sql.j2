@@ -1,0 +1,13 @@
+{# Syncs the regex deny rows tagged 'blocked-sites' with _pihole_blocked_sites, then prints how many rows changed. #}
+{% set regexes = [] %}
+{% for s in _pihole_blocked_sites %}
+{%   set _ = regexes.append('(\\.|^)' ~ s | replace('.', '\\.') ~ '$' if '.' in s else s) %}
+{% endfor %}
+BEGIN;
+DELETE FROM domainlist WHERE type = 3 AND comment = 'blocked-sites'
+  AND domain NOT IN ({% for r in regexes %}'{{ r }}'{{ ', ' if not loop.last }}{% endfor %});
+{% for r in regexes %}
+INSERT OR IGNORE INTO domainlist (type, domain, enabled, comment) VALUES (3, '{{ r }}', 1, 'blocked-sites');
+{% endfor %}
+COMMIT;
+SELECT total_changes();

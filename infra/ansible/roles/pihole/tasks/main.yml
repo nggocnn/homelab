@@ -136,6 +136,44 @@
   changed_when: _pihole_adlist.stdout | trim == '1'
   notify: update gravity
 
+- name: Read the blocked sites
+  ansible.builtin.set_fact:
+    _pihole_blocked_lines: "{{ (lookup('ansible.builtin.file', pihole_blocked_sites_file, errors='ignore') | default('', true)).splitlines() | map('regex_replace', '(^|\\s)#.*$', '') | map('trim') | select | unique | list }}"
+
+- name: Split them into blocklists and names
+  ansible.builtin.set_fact:
+    _pihole_blocked_lists: "{{ _pihole_blocked_lines | select('match', '^https?://') | list }}"
+    _pihole_blocked_sites: "{{ _pihole_blocked_lines | reject('match', '^https?://') | map('lower') | unique | list }}"
+
+- name: Assert every blocked site is a domain or a word
+  ansible.builtin.assert:
+    that: _pihole_blocked_sites | reject('match', '^[a-z0-9-]+(\.[a-z0-9-]+)*$') | list | length == 0
+    fail_msg: >-
+      Not a domain, word or URL in {{ pihole_blocked_sites_file | realpath }}:
+      {{ _pihole_blocked_sites | reject('match', '^[a-z0-9-]+(\.[a-z0-9-]+)*$') | list }}
+    quiet: true
+
+# Rows tagged 'blocked-sites'; rows added in the web UI are left alone.
+- name: Sync the blocked sites
+  ansible.builtin.command:
+    argv:
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - "{{ lookup('ansible.builtin.template', 'blocked.sql.j2') }}"
+  register: _pihole_blocked
+  changed_when: _pihole_blocked.stdout | trim != '0'
+  notify: reload pihole lists
+
+- name: Sync the blocked-site blocklists
+  ansible.builtin.command:
+    argv:
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - "{{ lookup('ansible.builtin.template', 'blocked-lists.sql.j2') }}"
+  register: _pihole_blocked_adlists
+  changed_when: _pihole_blocked_adlists.stdout | trim != '0'
+  notify: update gravity
+
 - name: Enable and start pihole-FTL
   ansible.builtin.service:
     name: pihole-FTL

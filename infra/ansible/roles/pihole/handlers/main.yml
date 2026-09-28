@@ -11,3 +11,9 @@
   ansible.builtin.command:
     cmd: pihole -g
   changed_when: true
+
+# FTL reads the domainlist from gravity.db; this re-reads it without flushing the cache.
+- name: reload pihole lists
+  ansible.builtin.command:
+    cmd: pihole reloadlists
+  changed_when: true

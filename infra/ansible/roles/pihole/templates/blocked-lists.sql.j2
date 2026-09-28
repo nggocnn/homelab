@@ -1,0 +1,9 @@
+{# Syncs the adlist rows tagged 'blocked-sites' with _pihole_blocked_lists, then prints how many rows changed. #}
+BEGIN;
+DELETE FROM adlist WHERE comment = 'blocked-sites'
+  AND address NOT IN ({% for u in _pihole_blocked_lists %}'{{ u | replace("'", "''") }}'{{ ', ' if not loop.last }}{% endfor %});
+{% for u in _pihole_blocked_lists %}
+INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('{{ u | replace("'", "''") }}', 1, 'blocked-sites');
+{% endfor %}
+COMMIT;
+SELECT total_changes();

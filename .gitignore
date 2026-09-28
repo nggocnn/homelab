@@ -15,6 +15,7 @@ infra/ansible/bastion-password.hash
 # DNS admin credentials - generated locally, never committed.
 infra/ansible/adguard-password.hash
 infra/ansible/pihole-password
+infra/ansible/blocked-sites
 
 # Monitoring logins and the Telegram bot token and chat ID - generated locally, never committed.
 infra/ansible/beszel-password
