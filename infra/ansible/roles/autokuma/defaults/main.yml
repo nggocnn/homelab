@@ -12,6 +12,7 @@ autokuma_password_file: "{{ playbook_dir }}/../kuma-password"
 autokuma_ping_groups:
   nodes: { name: Nodes, hosts: pve }
   containers: { name: Containers, hosts: lxc }
+  vms: { name: VMs, hosts: vm }
 
 # Lookups through dns_vip and each host in autokuma_dns_hosts, under a DNS group.
 # expect: the answer must equal it, so a stale or missing record fails too.

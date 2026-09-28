@@ -12,7 +12,7 @@ beszel_password_file: "{{ playbook_dir }}/../beszel-password"
 
 # Hosts the hub dials on :45876. Written to config.yml, which the hub syncs on start:
 # a system missing from the list is deleted, with its history.
-beszel_systems: "{{ groups['pve'] }}"
+beszel_systems: "{{ groups['pve'] + groups['vm'] }}"
 
 # Applied to every system; alerts not listed here are deleted.
 # value: threshold (% or °C). min: minutes above it before firing; for Status, minutes down.

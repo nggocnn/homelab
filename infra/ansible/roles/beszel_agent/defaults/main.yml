@@ -2,6 +2,9 @@
 beszel_agent_version: "0.20.0"
 beszel_agent_listen: "{{ ansible_host }}:45876"
 
+# Joins the docker group, so the agent reports each container.
+beszel_agent_docker: false
+
 # The hub whose public key is authorised; the agent accepts connections from it alone.
 beszel_hub_host: "{{ groups['beszel'][0] }}"
 beszel_hub_data_dir: /var/lib/beszel

@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 User=beszel
-SupplementaryGroups=disk
+SupplementaryGroups=disk{{ " docker" if beszel_agent_docker | bool else "" }}
 Environment="KEY={{ _beszel_hub_key }}"
 Environment="LISTEN={{ beszel_agent_listen }}"
 ExecStart=/usr/local/bin/beszel-agent

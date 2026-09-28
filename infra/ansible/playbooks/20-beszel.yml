@@ -1,5 +1,5 @@
 ---
-# Beszel: the hub on beszel-01, an agent on each node, alerts to Telegram.
+# Beszel: the hub on beszel-01, an agent on each node and VM, alerts to Telegram.
 # Standalone - nothing here depends on the Prometheus stack, or the other way round.
 #
 #   (umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)
@@ -13,7 +13,7 @@
     - beszel_hub
 
 - name: Beszel agents
-  hosts: pve
+  hosts: pve:vm
   gather_facts: false
   roles:
     - beszel_agent
