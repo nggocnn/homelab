@@ -18,6 +18,14 @@ lxc_root_authorized_keys:
   - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIB5fkwTEbG6Ldkksg4wg9YMcBOeaqgcoZStFVTklvbQ lxc.nggocnn.internal"
 guest_ssh_root_authorized_keys: "{{ lxc_root_authorized_keys }}"
 
+# --- firewall ---------------------------------------------------------------
+# Every container's <vmid>.fw starts with these; its group adds pve_firewall_rules.
+pve_firewall_guest_base:
+  - "IN SSH(ACCEPT) -source +dc/admin"
+  - "IN SSH(ACCEPT) -source +dc/bastion"
+  - "IN Ping(ACCEPT) -source {{ pve_subnet_cidr }}"
+pve_firewall_rules: []
+
 # --- container ----------------------------------------------------------------
 # Sizing and network defaults: roles/pve_lxc/defaults/main.yml.
 lxc_pool: network

@@ -2,3 +2,8 @@
 # --- container ----------------------------------------------------------------
 lxc_pool: infrastructure
 lxc_disk_gb: 8   # SQLite history
+
+# --- firewall ---------------------------------------------------------------
+pve_firewall_rules:
+  - "IN ACCEPT -source +dc/admin -p tcp -dport 8090"
+  - "IN ACCEPT -source +dc/kuma -p tcp -dport 8090"

@@ -1,0 +1,30 @@
+# Managed by Ansible (homelab/infra/ansible) - a change in the web UI is overwritten
+[OPTIONS]
+enable: {{ pve_firewall_enable | bool | ternary(1, 0) }}
+policy_in: DROP
+policy_out: ACCEPT
+
+[ALIASES]
+local_network {{ pve_firewall_local_network }}
+
+[IPSET management] # 22, 8006, consoles and migration on the nodes, plus local_network
+{% for a in pve_firewall_admin %}
+{{ a }}
+{% endfor %}
+
+[IPSET admin]
+{% for a in pve_firewall_admin %}
+{{ a }}
+{% endfor %}
+{% for g in groups | sort if g not in ['all', 'ungrouped'] %}
+
+[IPSET {{ g }}]
+{% for h in groups[g] %}
+{{ hostvars[h].ansible_host }} # {{ h }}
+{% endfor %}
+{% endfor %}
+
+[RULES]
+{% for r in pve_firewall_rules %}
+{{ r }}
+{% endfor %}

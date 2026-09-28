@@ -37,6 +37,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates` and `pve_isos` on every node's `local` storage - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
 | `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
 | `playbooks/04-vip.yml` | `pve_vip` (`10.10.10.50`) floating across the three nodes, so the web UI and the API have one address. Each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. |
+| `playbooks/05-firewall.yml` | The Proxmox firewall on the nodes and every container: inbound dropped unless its group allows it. Ipsets come from the inventory - re-run after adding a container. |
 | `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01..03`, each advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve each device's route in the admin console). Tailscale routes through one of them at a time and fails over to another. |
 | `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the container key and an `~/.ssh/config` for every container. No node access. Re-run after adding a container - `pve_lxc` seeds root's keys at create time only. |
@@ -55,6 +56,8 @@ ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/03-lxc.yml
 ansible-playbook playbooks/04-vip.yml
+ansible-playbook playbooks/05-firewall.yml -e pve_firewall_enable=false   # files in place, rules checked, nothing applied
+ansible-playbook playbooks/05-firewall.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
@@ -127,6 +130,19 @@ measurable in all three. Exactly one node answered at every sample - no split br
 The third row is the case a service check alone misses: `pveproxy` never stopped answering on the
 partitioned node, and without `chk_quorum` the VIP would have stayed on a node whose `/etc/pve` had
 gone read-only.
+
+### Firewall
+
+`cluster.fw` holds the node rules and one ipset per inventory group; each container gets
+`<vmid>.fw` from `pve_firewall_guest_base` plus its group's `pve_firewall_rules`. Admin sources
+(`pve_firewall_admin_hosts`, the Tailscale routers) reach SSH, 8006 and the web UIs; the rest of
+the LAN gets DNS and ping.
+
+`local_network` is pinned to `10.10.10.8/29`: pve-firewall adds it to the `management` ipset, and
+left to autodetect it would open 22 and 8006 to the whole `/24`.
+
+Enabling arms `pve-firewall stop` on every node for 5 minutes, disarmed only once a new SSH
+connection gets through. Locked out anyway: wait it out, or from a console run `pve-firewall stop`.
 
 ### DNS
 

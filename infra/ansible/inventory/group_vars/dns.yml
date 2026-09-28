@@ -36,3 +36,12 @@ keepalived_scripts:
 
 # Any name; only whether something replies matters.
 dns_probe_name: "{{ groups['pve'][0] }}.{{ pve_domain }}"
+
+# --- firewall ---------------------------------------------------------------
+pve_firewall_rules:
+  - "IN DNS(ACCEPT) -source {{ pve_subnet_cidr }}"
+  - "IN ACCEPT -source +dc/dns -p vrrp                     # keepalived"
+  - "IN HTTP(ACCEPT) -source +dc/admin                     # Pi-hole"
+  - "IN HTTPS(ACCEPT) -source +dc/admin"
+  - "IN ACCEPT -source +dc/admin -p tcp -dport 8080        # AdGuard"
+  - "IN ACCEPT -source +dc/monitor -p tcp -dport 9617      # pihole exporter"

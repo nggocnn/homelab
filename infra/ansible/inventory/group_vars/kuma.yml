@@ -9,3 +9,7 @@ lxc_disk_gb: 8
 autokuma_monitors:
   pve-vip: { type: http, name: Proxmox VIP, url: "https://{{ pve_vip }}:8006", ignore_tls: true }
   beszel: { type: http, name: Beszel, url: "http://{{ hostvars['beszel-01'].ansible_host }}:8090" }
+
+# --- firewall ---------------------------------------------------------------
+pve_firewall_rules:
+  - "IN ACCEPT -source +dc/admin -p tcp -dport 3001"

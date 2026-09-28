@@ -1,0 +1,26 @@
+---
+# The Proxmox firewall: cluster.fw for the nodes, <vmid>.fw for each lxc host. Inbound is
+# dropped unless a rule allows it; outbound stays open.
+pve_firewall_enable: true
+
+# Written here, then copied into /etc/pve: pmxcfs refuses the chmod and rename that
+# template and copy do, and they fail or report ok on a file they never wrote.
+pve_firewall_stage: /root/.pve-firewall
+
+# Armed on every node before enabling, disarmed once a new SSH connection gets through.
+# If the rules lock the controller out, `pve-firewall stop` runs when it fires.
+pve_firewall_rollback_sec: 300
+
+# SSH, the API and the web UIs: these addresses, plus every host in these groups.
+pve_firewall_admin_hosts: []
+pve_firewall_admin_groups: []
+pve_firewall_admin: "{{ pve_firewall_admin_hosts + (pve_firewall_admin_groups | map('extract', groups) | flatten | map('extract', hostvars, 'ansible_host') | list) }}"
+
+# Always added to the management ipset by pve-firewall itself. It defaults to the whole
+# detected subnet, so set it to the nodes alone.
+pve_firewall_local_network: ""
+
+# Inbound rules in .fw syntax. On a node they go into cluster.fw; on a container,
+# after pve_firewall_guest_base, into its <vmid>.fw.
+pve_firewall_rules: []
+pve_firewall_guest_base: []

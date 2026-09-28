@@ -19,3 +19,8 @@ dns_vip: 10.10.10.51
 telegram_bot_token_file: "{{ playbook_dir }}/../telegram-bot-token"
 telegram_chat_id_file: "{{ playbook_dir }}/../telegram-chat-id"
 telegram_chat_id: "{{ lookup('ansible.builtin.file', telegram_chat_id_file, errors='ignore') | default('', true) | trim }}"
+
+# Firewall admin sources: SSH, the API and the web UIs. Tailscale arrives SNATed from its routers.
+pve_firewall_admin_hosts:
+  - 10.10.10.243   # workstation
+pve_firewall_admin_groups: [tailscale]

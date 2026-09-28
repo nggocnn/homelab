@@ -1,0 +1,110 @@
+---
+# Runs on the pve group. /etc/pve/firewall is cluster-wide, so the files are written once,
+# from pve_cluster_primary; the rollback timer and the checks run on every node.
+
+- name: Assert local_network is set
+  ansible.builtin.assert:
+    that: pve_firewall_local_network | length > 0
+    fail_msg: pve_firewall_local_network is empty - pve-firewall would open 22 and 8006 to the detected subnet.
+    quiet: true
+
+# --- rollback -----------------------------------------------------------------
+- name: Arm the rollback timer
+  when: pve_firewall_enable | bool and not ansible_check_mode
+  changed_when: false
+  ansible.builtin.shell:
+    cmd: >-
+      systemctl stop pve-firewall-rollback.timer 2>/dev/null;
+      systemd-run --unit=pve-firewall-rollback --on-active={{ pve_firewall_rollback_sec }}
+      /usr/sbin/pve-firewall stop
+
+# --- files --------------------------------------------------------------------
+- name: Write the firewall files
+  when: inventory_hostname == pve_cluster_primary
+  block:
+    - name: Create the staging directory
+      ansible.builtin.file:
+        path: "{{ pve_firewall_stage }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Render cluster.fw
+      ansible.builtin.template:
+        src: cluster.fw.j2
+        dest: "{{ pve_firewall_stage }}/cluster.fw"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Render the container files
+      ansible.builtin.template:
+        src: guest.fw.j2
+        dest: "{{ pve_firewall_stage }}/{{ hostvars[guest].ansible_host.split('.')[-1] }}.fw"
+        owner: root
+        group: root
+        mode: "0600"
+      loop: "{{ groups['lxc'] }}"
+      loop_control:
+        loop_var: guest
+
+    # Containers first: a guest rule naming an ipset has to find it, and cluster.fw is
+    # also what turns the firewall on.
+    - name: Install into /etc/pve/firewall
+      ansible.builtin.shell:
+        cmd: >-
+          cmp -s {{ pve_firewall_stage }}/{{ item }} /etc/pve/firewall/{{ item }}
+          || { cat {{ pve_firewall_stage }}/{{ item }} > /etc/pve/firewall/{{ item }} && echo installed; }
+      register: _fw_install
+      changed_when: _fw_install.stdout == 'installed'
+      loop: "{{ groups['lxc'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^.*\\.', '') | map('regex_replace', '$', '.fw') | list + ['cluster.fw'] }}"
+
+    # A rule with a bad parameter is skipped with a log line, not refused. The API returns it with `errors`.
+    - name: Read the rules back through the API
+      ansible.builtin.command:
+        cmd: pvesh get {{ _api }}/firewall/rules --output-format json
+      vars:
+        _api: >-
+          {{ '/cluster' if item == 'cluster.fw' else
+             '/nodes/' ~ hostvars[item].lxc_node ~ '/lxc/' ~ hostvars[item].ansible_host.split('.')[-1] }}
+      register: _fw_rules
+      changed_when: false
+      check_mode: false
+      loop: "{{ ['cluster.fw'] + groups['lxc'] }}"
+      when: not ansible_check_mode
+
+    - name: Assert every rule parsed
+      ansible.builtin.assert:
+        that: item.stdout | from_json | selectattr('errors', 'defined') | list | length == 0
+        fail_msg: "{{ item.item }}: {{ item.stdout | from_json | selectattr('errors', 'defined') | list }}"
+        quiet: true
+      loop: "{{ _fw_rules.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not ansible_check_mode
+
+# --- verify -------------------------------------------------------------------
+- name: Verify the controller still gets in, then disarm
+  when: pve_firewall_enable | bool and not ansible_check_mode
+  block:
+    # pve-firewall applies changes on a 10 s loop and says "(pending changes)" until then.
+    - name: Wait for the rules to be applied
+      ansible.builtin.command:
+        cmd: pve-firewall status
+      register: _fw_status
+      changed_when: false
+      until: "_fw_status.stdout == 'Status: enabled/running'"
+      retries: 12
+      delay: 5
+
+    - name: Drop the SSH connection opened before the rules
+      ansible.builtin.meta: reset_connection
+
+    - name: Log in again through the new rules
+      ansible.builtin.ping:
+
+    - name: Disarm the rollback timer
+      ansible.builtin.command:
+        cmd: systemctl stop pve-firewall-rollback.timer
+      changed_when: false

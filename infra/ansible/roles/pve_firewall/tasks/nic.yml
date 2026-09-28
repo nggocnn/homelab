@@ -1,0 +1,28 @@
+---
+# Runs on the lxc group. A container's .fw does nothing until its NIC has firewall=1.
+# pct set re-plugs a running container's veth, so it blips once, without a restart.
+
+- name: Read net0
+  ansible.builtin.command:
+    cmd: pct config {{ ansible_host.split('.')[-1] }}
+  delegate_to: "{{ lxc_node }}"
+  changed_when: false
+  check_mode: false
+  register: _ct_conf
+
+- name: Turn the firewall on for net0
+  vars:
+    # Not regex_search with a capture group: it fails once it reaches `when`. See wiki homelab/006.
+    _net0: "{{ _ct_conf.stdout_lines | select('match', 'net0: ') | first | regex_replace('^net0: ', '') }}"
+  ansible.builtin.command:
+    argv: [pct, set, "{{ ansible_host.split('.')[-1] }}", --net0, "{{ _net0 }},firewall=1"]
+  delegate_to: "{{ lxc_node }}"
+  when: "'firewall=1' not in _net0"
+
+- name: Wait for SSH through the new rules
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 22
+    timeout: 30
+  delegate_to: localhost
+  when: not ansible_check_mode

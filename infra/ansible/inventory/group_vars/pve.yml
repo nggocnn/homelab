@@ -37,6 +37,20 @@ keepalived_scripts:
   - name: chk_quorum
     script: "/etc/keepalived/scripts/quorum-check"
 
+# --- firewall ---------------------------------------------------------------
+# pve-firewall always adds local_network to the management ipset (22, 8006, consoles), so
+# pin it to the node block (.8-.15) rather than the shared /24.
+pve_firewall_local_network: 10.10.10.8/29
+
+# cluster.fw [RULES], for every node. The management ipset covers the admin sources.
+pve_firewall_rules:
+  - "IN ACCEPT -source +dc/pve -p vrrp                         # keepalived, pve_vip"
+  - "IN ACCEPT -source +dc/cloudflared -p tcp -dport 8006      # the tunnel"
+  - "IN ACCEPT -source +dc/kuma -p tcp -dport 8006"
+  - "IN ACCEPT -source +dc/monitor -p tcp -dport 8006,9100,9256,12345   # pve-exporter, node, process, Alloy"
+  - "IN ACCEPT -source +dc/beszel -p tcp -dport 45876"
+  - "IN Ping(ACCEPT) -source {{ pve_subnet_cidr }}"
+
 # --- dns --------------------------------------------------------------------
 # dns1..dns3, in order. The VIP first; the gateway behind it so a node can still
 # resolve for apt and chrony while the resolver pair is down.

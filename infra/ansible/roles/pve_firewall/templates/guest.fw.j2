@@ -1,0 +1,10 @@
+# Managed by Ansible (homelab/infra/ansible) - a change in the web UI is overwritten
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[RULES]
+{% for r in hostvars[guest].pve_firewall_guest_base + hostvars[guest].pve_firewall_rules %}
+{{ r }}
+{% endfor %}

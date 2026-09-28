@@ -40,7 +40,7 @@
           --cores {{ lxc_cores }}
           --memory {{ lxc_memory_mb }}
           --rootfs {{ lxc_storage }}:{{ lxc_disk_gb }}
-          --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }}/{{ lxc_prefix }},gw={{ lxc_gateway }},hwaddr={{ lxc_hwaddr }}
+          --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }}/{{ lxc_prefix }},gw={{ lxc_gateway }},hwaddr={{ lxc_hwaddr }},firewall=1
           --nameserver {{ lxc_nameserver }}
           {% if lxc_pool %}--pool {{ lxc_pool }}{% endif %}
           {% for dev in lxc_devices %}--dev{{ loop.index0 }} {{ dev }} {% endfor %}

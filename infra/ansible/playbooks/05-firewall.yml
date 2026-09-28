@@ -1,0 +1,24 @@
+---
+# Phase 2 - the Proxmox firewall: cluster.fw for the nodes, a .fw per container, and
+# firewall=1 on each container's NIC. Inbound is dropped unless group_vars allow it.
+#
+# Enabling is guarded: a timer runs `pve-firewall stop` on every node after
+# pve_firewall_rollback_sec unless a new SSH connection gets through first.
+# Re-run after adding a container or a host to a group - the ipsets come from the inventory.
+#
+#   ansible-playbook playbooks/05-firewall.yml --check --diff
+#   ansible-playbook playbooks/05-firewall.yml
+- name: Nodes and rule files
+  hosts: pve
+  gather_facts: false
+  roles:
+    - pve_firewall
+
+- name: Container NICs
+  hosts: lxc
+  gather_facts: false
+  tasks:
+    - name: Firewall on net0
+      ansible.builtin.import_role:
+        name: pve_firewall
+        tasks_from: nic.yml

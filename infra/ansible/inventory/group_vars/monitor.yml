@@ -4,3 +4,8 @@ lxc_pool: infrastructure
 lxc_cores: 2
 lxc_memory_mb: 2048
 lxc_disk_gb: 32   # 90 days of series, at a 15 s scrape
+
+# --- firewall ---------------------------------------------------------------
+pve_firewall_rules:
+  - "IN ACCEPT -source +dc/admin -p tcp -dport 3000,9090   # Grafana, Prometheus"
+  - "IN ACCEPT -source +dc/pve -p tcp -dport 3100          # Loki, pushed by Alloy"
