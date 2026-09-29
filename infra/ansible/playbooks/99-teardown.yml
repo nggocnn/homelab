@@ -1,0 +1,195 @@
+---
+# Back to the state after 01-cluster.yml: every guest, pool, image and node service goes.
+# The nodes (00-host.yml) and the cluster stay; pools come back with 01, the rest with 02 onward.
+# Backups on local are kept.
+#
+#   ansible-playbook playbooks/99-teardown.yml
+#   ansible-playbook playbooks/99-teardown.yml -e teardown_confirm=pve   # no prompt
+- name: Guests, pools and API users
+  hosts: pve_primary
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: List the cluster's guests
+      ansible.builtin.command:
+        cmd: pvesh get /cluster/resources --type vm --output-format json
+      register: _guests_raw
+      changed_when: false
+      check_mode: false
+
+    - name: Keep them
+      ansible.builtin.set_fact:
+        _guests: "{{ _guests_raw.stdout | from_json | sort(attribute='vmid') }}"
+
+    - name: Ask before destroying
+      ansible.builtin.pause:
+        prompt: |-
+          {% for g in _guests %}
+            {{ g.vmid }} {{ g.name }} ({{ g.type }}, {{ g.node }}, {{ g.status }})
+          {% endfor %}
+          Destroys these {{ _guests | length }} guests, every pool, template, ISO, disk image and snippet,
+          and the VIP and monitoring agents on {{ groups['pve'] | join(', ') }}.
+          Type {{ pve_cluster_name }} to continue
+      register: _confirm
+      when: teardown_confirm is not defined
+
+    - name: Assert the confirmation
+      ansible.builtin.assert:
+        that: (teardown_confirm | default(_confirm.user_input | default(''))) == pve_cluster_name
+        fail_msg: Not confirmed, nothing destroyed.
+        quiet: true
+
+    - name: Stop the running guests
+      ansible.builtin.command:
+        cmd: "{{ 'pct' if item.type == 'lxc' else 'qm' }} stop {{ item.vmid }}"
+      delegate_to: "{{ item.node }}"
+      loop: "{{ _guests | selectattr('status', 'equalto', 'running') | list }}"
+      loop_control:
+        label: "{{ item.vmid }} {{ item.name }}"
+
+    # --purge also drops the guest from backup jobs, replication and HA.
+    - name: Destroy the guests
+      ansible.builtin.command:
+        cmd: "{{ 'pct' if item.type == 'lxc' else 'qm' }} destroy {{ item.vmid }} --purge 1 --destroy-unreferenced-disks 1"
+      delegate_to: "{{ item.node }}"
+      loop: "{{ _guests }}"
+      loop_control:
+        label: "{{ item.vmid }} {{ item.name }}"
+
+    - name: List the pools
+      ansible.builtin.command:
+        cmd: pvesh get /pools --output-format json
+      register: _pools
+      changed_when: false
+      check_mode: false
+
+    - name: Delete the pools
+      ansible.builtin.command:
+        cmd: pveum pool delete {{ item | quote }}
+      loop: "{{ _pools.stdout | from_json | map(attribute='poolid') | list }}"
+
+    # Its token config lived on monitor-01. Deleting the user drops its tokens and ACLs too.
+    - name: List the API users
+      ansible.builtin.command:
+        cmd: pvesh get /access/users --output-format json
+      register: _pve_users
+      changed_when: false
+      check_mode: false
+
+    - name: Remove the Prometheus API user
+      ansible.builtin.command:
+        cmd: pveum user delete prometheus@pve
+      when: "'prometheus@pve' in (_pve_users.stdout | from_json | map(attribute='userid'))"
+
+- name: Nodes
+  hosts: pve
+  gather_facts: false
+  tasks:
+    # --- images -----------------------------------------------------------------
+    - name: List {{ pve_images_storage }}
+      ansible.builtin.command:
+        cmd: pvesh get /nodes/{{ inventory_hostname }}/storage/{{ pve_images_storage }}/content --output-format json
+      register: _content
+      changed_when: false
+      check_mode: false
+
+    - name: Delete templates, ISOs, disk images and snippets
+      ansible.builtin.command:
+        cmd: pvesm free {{ item | quote }}
+      loop: >-
+        {{ _content.stdout | from_json
+           | selectattr('content', 'in', ['vztmpl', 'iso', 'import', 'snippets'])
+           | map(attribute='volid') | list }}
+
+    # storage.cfg is cluster-wide, so once.
+    - name: Read the {{ pve_images_storage }} storage
+      ansible.builtin.command:
+        cmd: pvesh get /storage/{{ pve_images_storage }} --output-format json
+      register: _storage
+      run_once: true
+      changed_when: false
+      check_mode: false
+
+    - name: Disallow snippets on {{ pve_images_storage }}
+      ansible.builtin.command:
+        cmd: pvesm set {{ pve_images_storage }} --content {{ _types | reject('equalto', 'snippets') | join(',') }}
+      vars:
+        _types: "{{ (_storage.stdout | from_json).content.split(',') }}"
+      when: "'snippets' in _types"
+      run_once: true
+
+    # --- agents and vip ---------------------------------------------------------
+    - name: Read the services
+      ansible.builtin.service_facts:
+
+    - name: Stop and disable the agents
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: [beszel-agent, node_exporter, process-exporter, alloy, keepalived]
+      when: item ~ '.service' in ansible_facts.services
+
+    - name: Remove alloy and keepalived
+      ansible.builtin.apt:
+        name: [alloy, keepalived]
+        state: absent
+        purge: true
+
+    - name: Remove the agent files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/beszel-agent.service
+        - /etc/systemd/system/node_exporter.service
+        - /etc/systemd/system/process-exporter.service
+        - /usr/local/bin/beszel-agent
+        - /usr/local/bin/node_exporter
+        - /usr/local/bin/process-exporter
+        - /etc/process-exporter
+        - /etc/keepalived
+        - /etc/alloy
+        - /etc/apt/sources.list.d/grafana.list
+        - /usr/share/keyrings/grafana.asc
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Remove the agent users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        state: absent
+      loop: [beszel, node-exp]
+
+    - name: Look for the VIP certificate
+      ansible.builtin.stat:
+        path: /etc/pve/nodes/{{ inventory_hostname }}/pveproxy-ssl.pem
+      register: _vip_cert
+
+    # pveproxy falls back to pve-ssl.pem, signed by the same cluster CA.
+    - name: Delete it and restart pveproxy
+      ansible.builtin.command:
+        cmd: pvenode cert delete --restart 1
+      when: _vip_cert.stat.exists
+
+    # --- dns --------------------------------------------------------------------
+    # dns_vip is gone with the DNS containers; 14-dns-clients.yml points the nodes back at it.
+    - name: Resolvers back to the gateway
+      ansible.builtin.import_role:
+        name: pve_host
+        tasks_from: dns.yml
+      vars:
+        pve_dns_servers: ["{{ pve_gateway }}"]
+
+# Rebuilt guests get new host keys, and host_key_checking is on.
+- name: Controller known_hosts
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Forget the guest host keys
+      ansible.builtin.known_hosts:
+        name: "{{ hostvars[item].ansible_host }}"
+        state: absent
+      loop: "{{ groups['lxc'] + groups['vm'] + groups['haos'] }}"
