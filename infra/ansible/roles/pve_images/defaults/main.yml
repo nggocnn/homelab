@@ -8,8 +8,10 @@ pve_images_throttle: 0
 pve_lxc_templates: []
 
 # { name, url, checksum } to download, or { name, src, checksum? } to push from the controller.
+# Optional nodes: [pve-02] limits an ISO or VM image to those nodes.
 # checksum is "<algo>:<hex>"; src is an absolute path on the controller.
 pve_isos: []
 
 # VM disk images to {{ pve_images_storage }}:import/, same fields as pve_isos. qcow2 or raw, named by extension.
+# xz: true for a .xz download; checksum is then the compressed file's.
 pve_cloud_images: []

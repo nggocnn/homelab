@@ -1,10 +1,15 @@
 ---
 # Download or push _images to {{ pve_images_storage }}:{{ _content }}/. Expects _content and _images.
+# An entry with `nodes` goes to those nodes only.
+
+- name: Pick this node's {{ _content }} files
+  ansible.builtin.set_fact:
+    _mine: "{{ _images | rejectattr('nodes', 'defined') | list + _images | selectattr('nodes', 'defined') | selectattr('nodes', 'contains', inventory_hostname) | list }}"
 
 - name: Resolve the {{ _content }} paths
   ansible.builtin.command:
     cmd: pvesm path {{ (pve_images_storage ~ ':' ~ _content ~ '/' ~ item.name) | quote }}
-  loop: "{{ _images | selectattr('url', 'defined') | list }}"
+  loop: "{{ _mine | selectattr('url', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"
   register: _paths
@@ -21,16 +26,48 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ _paths.results }}"
+  loop: "{{ _paths.results | rejectattr('item.xz', 'defined') | list }}"
   loop_control:
     label: "{{ item.item.name }}"
   throttle: "{{ pve_images_throttle }}"
+
+# xz: true - the checksum is of the .xz, which is removed once decompressed.
+- name: Stat the decompressed {{ _content }} files
+  ansible.builtin.stat:
+    path: "{{ item.stdout }}"
+    get_checksum: false
+  loop: "{{ _paths.results | selectattr('item.xz', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: _xz_done
+
+- name: Download {{ _content }} .xz files
+  ansible.builtin.get_url:
+    url: "{{ item.item.item.url }}"
+    dest: "{{ item.item.stdout }}.xz"
+    checksum: "{{ item.item.item.checksum }}"
+    tmp_dest: "{{ item.item.stdout | dirname }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ _xz_done.results | rejectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
+  throttle: "{{ pve_images_throttle }}"
+
+- name: Decompress them
+  ansible.builtin.command:
+    cmd: xz -d {{ (item.item.stdout ~ '.xz') | quote }}
+    creates: "{{ item.item.stdout }}"
+  loop: "{{ _xz_done.results | rejectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
 
 - name: Push local {{ _content }} files
   ansible.builtin.include_tasks: push.yml
   vars:
     _volid: "{{ pve_images_storage }}:{{ _content }}/{{ _image.name }}"
-  loop: "{{ _images | selectattr('src', 'defined') | list }}"
+  loop: "{{ _mine | selectattr('src', 'defined') | list }}"
   loop_control:
     loop_var: _image
     label: "{{ _image.name }}"
