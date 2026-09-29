@@ -1,0 +1,55 @@
+---
+# Onboarding and core config over the HTTP and websocket APIs, add-ons with the `ha` CLI through
+# the guest agent. Everything runs on the controller or the node; HAOS has no SSH.
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _ha_password: "{{ lookup('ansible.builtin.file', ha_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _ha_password | length >= 8
+    fail_msg: "Missing or short {{ ha_password_file | realpath }} - create it with: read -rsp 'Home Assistant password: ' p && printf '%s' \"$p\" > ha-password"
+    quiet: true
+
+# First boot downloads Home Assistant Core; until then only a landing page answers.
+- name: Wait for onboarding
+  ansible.builtin.uri:
+    url: "{{ ha_url }}/api/onboarding"
+    return_content: true
+  delegate_to: localhost
+  register: _onboarding
+  until: _onboarding.status == 200 and _onboarding.json is defined
+  retries: 120
+  delay: 10
+
+- name: Log in
+  ansible.builtin.include_tasks: login.yml
+  vars:
+    _pending: "{{ _onboarding.json | rejectattr('done') | map(attribute='step') | list }}"
+
+- name: Core config
+  ha_core_config:
+    url: "{{ ha_url }}"
+    token: "{{ _ha_token.json.access_token }}"
+    config: "{{ ha_core_config }}"
+  delegate_to: localhost
+
+# What the setup wizard does after its location page. Once done, onboarding stays done.
+- name: Finish onboarding
+  ansible.builtin.uri:
+    url: "{{ ha_url }}/api/onboarding/{{ item }}"
+    method: POST
+    headers: { Authorization: "Bearer {{ _ha_token.json.access_token }}" }
+    body_format: json
+    body: "{{ {'client_id': ha_url ~ '/', 'redirect_uri': ha_url ~ '/?auth_callback=1'} if item == 'integration' else {} }}"
+  loop: "{{ _onboarding.json | rejectattr('done') | map(attribute='step') | select('in', ['core_config', 'analytics', 'integration']) | list }}"
+  delegate_to: localhost
+  changed_when: true
+
+- name: Add-ons
+  ansible.builtin.include_tasks: addon.yml
+  loop: "{{ ha_addons }}"
+  loop_control:
+    loop_var: _addon

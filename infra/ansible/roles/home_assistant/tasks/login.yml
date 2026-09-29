@@ -1,0 +1,49 @@
+---
+# A token for this run: from creating the owner on first run, from the login flow after that.
+
+- name: Create {{ ha_user }}
+  ansible.builtin.uri:
+    url: "{{ ha_url }}/api/onboarding/users"
+    method: POST
+    body_format: json
+    body: { client_id: "{{ ha_url }}/", name: "{{ ha_user }}", username: "{{ ha_user }}", password: "{{ _ha_password }}", language: "{{ ha_language }}" }
+  delegate_to: localhost
+  register: _ha_created
+  when: "'user' in _pending"
+  changed_when: true
+  no_log: true
+
+- name: Log in as {{ ha_user }}
+  when: "'user' not in _pending"
+  delegate_to: localhost
+  no_log: true
+  block:
+    - name: Start the login flow
+      ansible.builtin.uri:
+        url: "{{ ha_url }}/auth/login_flow"
+        method: POST
+        body_format: json
+        body: { client_id: "{{ ha_url }}/", handler: [homeassistant, null], redirect_uri: "{{ ha_url }}/" }
+      register: _ha_flow
+
+    - name: Send the credentials
+      ansible.builtin.uri:
+        url: "{{ ha_url }}/auth/login_flow/{{ _ha_flow.json.flow_id }}"
+        method: POST
+        body_format: json
+        body: { client_id: "{{ ha_url }}/", username: "{{ ha_user }}", password: "{{ _ha_password }}" }
+      register: _ha_login
+      failed_when: _ha_login.json.type | default('') != 'create_entry'
+
+- name: Get a token
+  ansible.builtin.uri:
+    url: "{{ ha_url }}/auth/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: authorization_code
+      client_id: "{{ ha_url }}/"
+      code: "{{ _ha_created.json.auth_code if _ha_created is changed else _ha_login.json.result }}"
+  delegate_to: localhost
+  register: _ha_token
+  no_log: true

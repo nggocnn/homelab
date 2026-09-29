@@ -1,0 +1,13 @@
+---
+# ha-01: Home Assistant OS as its own VM: address, owner account and add-ons. The rest is in the UI.
+# Run 01-cluster.yml (pool) and 02-images.yml (image) first.
+#
+#   (umask 077; read -rsp 'Home Assistant password: ' p && printf '%s' "$p" > ha-password; unset p)
+#
+#   ansible-playbook playbooks/32-home-assistant.yml
+- name: Home Assistant OS
+  hosts: haos
+  gather_facts: false
+  roles:
+    - pve_vm
+    - home_assistant

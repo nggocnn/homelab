@@ -1,0 +1,58 @@
+---
+# NetworkManager guests without cloud-init (HAOS). Needs the guest agent to allow guest-exec.
+# By UUID: the HA Supervisor renames the profile to "Supervisor <iface>" as soon as it changes.
+
+- name: Wait for the guest agent
+  ansible.builtin.command:
+    cmd: qm agent {{ vm_vmid }} ping
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  register: _agent
+  until: _agent.rc == 0
+  retries: 60
+  delay: 10
+  changed_when: false
+  check_mode: false
+
+- name: Read the active ethernet connection
+  ansible.builtin.command:
+    argv: [qm, guest, exec, "{{ vm_vmid }}", --, nmcli, -t, -f, "UUID,TYPE", connection, show, --active]
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  register: _nm_active
+  changed_when: false
+  check_mode: false
+  failed_when: (_nm_active.stdout | from_json).exitcode | default(1) != 0
+
+- name: Pick the connection
+  ansible.builtin.set_fact:
+    _nm_con: >-
+      {{ (_nm_active.stdout | from_json)['out-data'].splitlines()
+         | select('search', ':802-3-ethernet$') | first | regex_replace(':802-3-ethernet$', '') }}
+
+- name: Read its IPv4 settings
+  ansible.builtin.command:
+    argv: [qm, guest, exec, "{{ vm_vmid }}", --, nmcli, -g, "ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.dns-search", connection, show, uuid, "{{ _nm_con }}"]
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  register: _nm_ipv4
+  changed_when: false
+  check_mode: false
+  failed_when: (_nm_ipv4.stdout | from_json).exitcode | default(1) != 0
+
+- name: Set {{ vm_ip }}/{{ vm_prefix }}
+  when: (_nm_ipv4.stdout | from_json)['out-data'] | default('') | trim != _want
+  vars:
+    _want: "{{ ['manual', vm_ip ~ '/' ~ vm_prefix, vm_gateway, vm_nameserver, pve_domain] | join('\n') }}"
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  block:
+    - name: Write the settings
+      ansible.builtin.command:
+        argv: [qm, guest, exec, "{{ vm_vmid }}", --, nmcli, connection, modify, uuid, "{{ _nm_con }}",
+               ipv4.method, manual, ipv4.addresses, "{{ vm_ip }}/{{ vm_prefix }}",
+               ipv4.gateway, "{{ vm_gateway }}", ipv4.dns, "{{ vm_nameserver }}", ipv4.dns-search, "{{ pve_domain }}"]
+      register: _nm_mod
+      failed_when: (_nm_mod.stdout | from_json).exitcode | default(1) != 0
+
+    - name: Apply them
+      ansible.builtin.command:
+        argv: [qm, guest, exec, "{{ vm_vmid }}", --, nmcli, connection, up, uuid, "{{ _nm_con }}"]
+      register: _nm_up
+      failed_when: (_nm_up.stdout | from_json).exitcode | default(1) != 0

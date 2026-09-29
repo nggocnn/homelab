@@ -1,0 +1,22 @@
+---
+# Owner account, created through onboarding on first run only. The file holds the plaintext.
+ha_user: nggocnn
+ha_password_file: "{{ inventory_dir }}/../ha-password"
+ha_language: en
+ha_url: "http://{{ ansible_host }}"   # :8123 only redirects here
+
+# Core config, enforced every run through the websocket API. A key left null is not managed.
+ha_core_config:
+  location_name: Home
+  time_zone: Asia/Ho_Chi_Minh
+  country: VN
+  currency: VND
+  unit_system: metric
+  language: "{{ ha_language }}"
+  latitude: null
+  longitude: null
+  elevation: null
+
+# Add-on slugs, installed and started through the guest agent. Additive: removing one uninstalls nothing.
+ha_addons:
+  - 5c53de3b_esphome   # ESPHome Device Builder

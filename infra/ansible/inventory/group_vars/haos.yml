@@ -1,0 +1,12 @@
+---
+# --- vm ---------------------------------------------------------------------
+# Home Assistant OS: UEFI, no cloud-init. The address is set through the guest agent.
+vm_image: local:import/haos_ova-18.3.qcow2
+vm_cloud_init: false
+vm_bios: ovmf
+vm_machine: q35
+vm_pool: home-automation
+vm_cores: 2
+vm_memory_mb: 4096
+vm_disk_gb: 64
+vm_nameserver: "{{ dns_vip }}"

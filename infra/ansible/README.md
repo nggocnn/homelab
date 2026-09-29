@@ -17,6 +17,7 @@ So `pve_host` re-asserts all of it, every run, converging on **the same paths an
 ```bash
 sudo apt install -y ansible               # 13.1.0: ansible-core 2.20.1 + bundled collections
 sudo apt install -y python3-paramiko      # the bastion's proxmox_pct_remote connection needs it
+sudo apt install -y python3-websocket     # home_assistant's core config goes over the websocket API
 cd infra/ansible
 ansible-galaxy collection install -r requirements.yml   # into ./collections (gitignored)
 ansible pve -m ping                       # expect 3 × SUCCESS
@@ -47,6 +48,7 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with key-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 12, 20 and 21 for its DNS record, bastion access and monitoring. |
+| `playbooks/32-home-assistant.yml` | `ha-01`: Home Assistant OS as its own VM (UEFI, no cloud-init, no SSH), its static address set with `nmcli` through the guest agent. Then the owner `nggocnn` (onboarding API, first run only), `ha_core_config` (time zone, country, units - enforced every run) and `ha_addons` (ESPHome) through the `ha` CLI over the guest agent. Integrations, automations, backups and updates live in the UI. |
 
 ```bash
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
@@ -76,6 +78,8 @@ ansible-playbook playbooks/22-prometheus.yml
 ansible-playbook playbooks/23-loki.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
+(umask 077; read -rsp 'Home Assistant password: ' p && printf '%s' "$p" > ha-password; unset p)   # gitignored
+ansible-playbook playbooks/32-home-assistant.yml
 ```
 
 ### Monitoring

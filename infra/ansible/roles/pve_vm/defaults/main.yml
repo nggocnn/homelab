@@ -14,12 +14,16 @@ vm_disk_gb: 16
 vm_cores: 2
 vm_memory_mb: 2048
 vm_cpu: x86-64-v2-AES
+vm_bios: seabios     # ovmf adds an EFI disk, Secure Boot keys not enrolled
+vm_machine: ""       # e.g. q35; empty keeps the Proxmox default
 vm_bridge: vmbr0
 vm_gateway: "{{ pve_gateway }}"
 vm_nameserver: "{{ pve_gateway }}"
 vm_pool: ""
 
 # cloud-init: the login user and its keys, and a full upgrade on first boot.
+# false for an appliance image: the address is then set with nmcli through the guest agent.
+vm_cloud_init: true
 vm_user: "{{ ansible_user }}"
 vm_authorized_keys: []
 

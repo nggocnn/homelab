@@ -9,3 +9,4 @@ lxc_disk_gb: 8
 autokuma_monitors:
   pve-vip: { type: http, name: Proxmox VIP, url: "https://{{ pve_vip }}:8006", ignore_tls: true }
   beszel: { type: http, name: Beszel, url: "http://{{ hostvars['beszel-01'].ansible_host }}:8090" }
+  home-assistant: { type: http, name: Home Assistant, url: "http://{{ hostvars['ha-01'].ansible_host }}" }

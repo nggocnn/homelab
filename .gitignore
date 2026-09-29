@@ -24,5 +24,6 @@ infra/ansible/grafana-password
 infra/ansible/telegram-bot-token
 infra/ansible/telegram-chat-id
 
-# VM user password, plaintext for sudo - generated locally, never committed.
+# VM user and Home Assistant owner passwords, plaintext - generated locally, never committed.
 infra/ansible/vm-password
+infra/ansible/ha-password

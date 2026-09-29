@@ -1,0 +1,30 @@
+---
+# One add-on: install if missing, start if stopped. `ha` runs in the hassio_cli container.
+
+- name: Read {{ _addon }}
+  ansible.builtin.command:
+    argv: [qm, guest, exec, "{{ vm_vmid }}", --, docker, exec, hassio_cli, ha, addons, info, "{{ _addon }}", --raw-json]
+  delegate_to: "{{ vm_node }}"
+  register: _addon_info
+  changed_when: false
+  check_mode: false
+
+- name: Keep its state
+  ansible.builtin.set_fact:
+    _addon_data: "{{ ((_addon_info.stdout | from_json)['out-data'] | from_json).data | default({}) }}"
+
+- name: Install {{ _addon }}
+  ansible.builtin.command:
+    argv: [qm, guest, exec, "{{ vm_vmid }}", --timeout, "900", --, docker, exec, hassio_cli, ha, addons, install, "{{ _addon }}"]
+  delegate_to: "{{ vm_node }}"
+  register: _addon_install
+  failed_when: (_addon_install.stdout | from_json).exitcode | default(1) != 0
+  when: not _addon_data.version | default(none)
+
+- name: Start {{ _addon }}
+  ansible.builtin.command:
+    argv: [qm, guest, exec, "{{ vm_vmid }}", --timeout, "300", --, docker, exec, hassio_cli, ha, addons, start, "{{ _addon }}"]
+  delegate_to: "{{ vm_node }}"
+  register: _addon_start
+  failed_when: (_addon_start.stdout | from_json).exitcode | default(1) != 0
+  when: _addon_install is changed or _addon_data.state | default('') != 'started'

@@ -22,54 +22,57 @@
 
 # --- vendor snippet -----------------------------------------------------------
 # storage.cfg is cluster-wide, so once; the file is per node, so on every node a VM can migrate to.
-- name: Read the {{ vm_snippet_storage }} storage
-  ansible.builtin.command:
-    cmd: pvesh get /storage/{{ vm_snippet_storage }} --output-format json
-  delegate_to: "{{ vm_node }}"
-  run_once: true
-  register: _storage
-  changed_when: false
-  check_mode: false
+- name: Vendor snippet
+  when: vm_cloud_init | bool
+  block:
+    - name: Read the {{ vm_snippet_storage }} storage
+      ansible.builtin.command:
+        cmd: pvesh get /storage/{{ vm_snippet_storage }} --output-format json
+      delegate_to: "{{ vm_node }}"
+      run_once: true
+      register: _storage
+      changed_when: false
+      check_mode: false
 
-- name: Allow snippets on {{ vm_snippet_storage }}
-  ansible.builtin.command:
-    cmd: pvesm set {{ vm_snippet_storage }} --content {{ (_content + ['snippets']) | join(',') }}
-  vars:
-    _content: "{{ (_storage.stdout | from_json).content.split(',') }}"
-  when: "'snippets' not in _content"
-  delegate_to: "{{ vm_node }}"
-  run_once: true
+    - name: Allow snippets on {{ vm_snippet_storage }}
+      ansible.builtin.command:
+        cmd: pvesm set {{ vm_snippet_storage }} --content {{ (_content + ['snippets']) | join(',') }}
+      vars:
+        _content: "{{ (_storage.stdout | from_json).content.split(',') }}"
+      when: "'snippets' not in _content"
+      delegate_to: "{{ vm_node }}"
+      run_once: true
 
-- name: Resolve the snippet path
-  ansible.builtin.command:
-    cmd: pvesm path {{ vm_snippet_storage }}:snippets/{{ vm_snippet }}
-  delegate_to: "{{ vm_node }}"
-  run_once: true
-  register: _snippet_path
-  changed_when: false
-  check_mode: false
+    - name: Resolve the snippet path
+      ansible.builtin.command:
+        cmd: pvesm path {{ vm_snippet_storage }}:snippets/{{ vm_snippet }}
+      delegate_to: "{{ vm_node }}"
+      run_once: true
+      register: _snippet_path
+      changed_when: false
+      check_mode: false
 
-- name: Create the snippets directory
-  ansible.builtin.file:
-    path: "{{ _snippet_path.stdout | dirname }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['pve'] }}"
-  run_once: true
+    - name: Create the snippets directory
+      ansible.builtin.file:
+        path: "{{ _snippet_path.stdout | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['pve'] }}"
+      run_once: true
 
-- name: Install the vendor snippet
-  ansible.builtin.copy:
-    src: vm-vendor.yaml
-    dest: "{{ _snippet_path.stdout }}"
-    owner: root
-    group: root
-    mode: "0644"
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['pve'] }}"
-  run_once: true
+    - name: Install the vendor snippet
+      ansible.builtin.copy:
+        src: vm-vendor.yaml
+        dest: "{{ _snippet_path.stdout }}"
+        owner: root
+        group: root
+        mode: "0644"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['pve'] }}"
+      run_once: true
 
 # --- create -------------------------------------------------------------------
 - name: Create {{ inventory_hostname }} on {{ vm_node }}
@@ -77,6 +80,7 @@
   delegate_to: "{{ vm_node }}"
   block:
     - name: Stage the SSH public keys
+      when: vm_cloud_init | bool
       ansible.builtin.copy:
         dest: /tmp/vm-{{ vm_vmid }}.pub
         content: "{{ vm_authorized_keys | join('\n') }}\n"
@@ -92,13 +96,17 @@
           --cores {{ vm_cores }}
           --memory {{ vm_memory_mb }}
           --scsihw virtio-scsi-single
+          {% if vm_machine %}--machine {{ vm_machine }}{% endif %}
+          --bios {{ vm_bios }}
+          {% if vm_bios == 'ovmf' %}--efidisk0 {{ vm_storage }}:1,efitype=4m,pre-enrolled-keys=0{% endif %}
           --scsi0 {{ vm_storage }}:0,import-from={{ vm_image }},discard=on,iothread=1,ssd=1
-          --ide2 {{ vm_storage }}:cloudinit
           --boot order=scsi0
-          --serial0 socket
-          --vga serial0
           --net0 virtio={{ vm_hwaddr }},bridge={{ vm_bridge }}
           --agent enabled=1
+          {% if vm_cloud_init | bool %}
+          --ide2 {{ vm_storage }}:cloudinit
+          --serial0 socket
+          --vga serial0
           --ipconfig0 ip={{ vm_ip }}/{{ vm_prefix }},gw={{ vm_gateway }}
           --nameserver {{ vm_nameserver }}
           --searchdomain {{ pve_domain }}
@@ -106,6 +114,7 @@
           --sshkeys /tmp/vm-{{ vm_vmid }}.pub
           --ciupgrade 1
           --cicustom vendor={{ vm_snippet_storage }}:snippets/{{ vm_snippet }}
+          {% endif %}
           {% if vm_pool %}--pool {{ vm_pool }}{% endif %}
           --onboot 1
       register: _create
@@ -125,7 +134,7 @@
 
 # host_key_checking is on, so later plays need the key. Read through the guest agent, not over the wire.
 - name: Trust the SSH host key of {{ inventory_hostname }}
-  when: _create is changed or _vm.status | default('') == 'running'
+  when: vm_cloud_init | bool and (_create is changed or _vm.status | default('') == 'running')
   delegate_to: "{{ _vm.node | default(vm_node) }}"
   block:
     # First boot upgrades every package before the agent is installed.
@@ -160,3 +169,8 @@
         port: 22
         timeout: 120
       delegate_to: localhost
+
+# No cloud-init: the address is set inside the guest, through the agent.
+- name: Static address for {{ inventory_hostname }}
+  ansible.builtin.include_tasks: network.yml
+  when: not vm_cloud_init | bool and (_create is changed or _vm.status | default('') == 'running')
