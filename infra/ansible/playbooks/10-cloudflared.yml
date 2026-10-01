@@ -1,11 +1,16 @@
 ---
-# Install cloudflared on the tunnel replicas. The tunnel token is added by hand.
+# cloudflared-01..03: created, then cloudflared installed. The tunnel token is added by hand.
 #
 #   ansible-playbook playbooks/10-cloudflared.yml
 #   ansible-playbook playbooks/10-cloudflared.yml -e apt_upgrade=true
-- name: Install cloudflared
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: cloudflared
   hosts: cloudflared
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - apt_packages
     - cloudflared

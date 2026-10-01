@@ -1,5 +1,5 @@
 ---
-# Install Tailscale and advertise the subnet. Log in by hand on each router, then re-run.
+# tailscale-01..03: created, then Tailscale installed and the subnet advertised. Log in by hand on each router, then re-run.
 # One router carries the subnet at a time; Tailscale fails over to another if it goes away.
 #
 #   tailscale up          # routes and accept-dns are reconciled by the role afterwards
@@ -8,9 +8,14 @@
 # -e tailscale_login_with_authkey=true replaces the manual login entirely.
 #
 #   ansible-playbook playbooks/11-tailscale.yml
-- name: Install Tailscale
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Tailscale
   hosts: tailscale
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - apt_packages
     - tailscale

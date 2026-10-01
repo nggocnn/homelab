@@ -1,6 +1,8 @@
 ---
-# Authorised for root. Additive, never pruned.
-guest_ssh_root_authorized_keys: []
+# The login user's authorized_keys, exclusive: anything not listed here is removed.
+guest_ssh_user: "{{ ansible_user }}"
+guest_ssh_authorized_keys:
+  - "{{ ssh_user_ca_line }}"
 
 # sshd drop-in from files/. false removes it.
 guest_ssh_harden: true

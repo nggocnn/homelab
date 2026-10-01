@@ -2,6 +2,9 @@
 # Phase 0 - LXC templates, ISOs and VM disk images on every node.
 #
 #   ansible-playbook playbooks/02-images.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: LXC templates, ISOs and VM disk images
   hosts: pve
   gather_facts: false

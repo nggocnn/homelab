@@ -1,4 +1,7 @@
 ---
+# The edge: out of the bastion certificate's reach.
+ssh_principal: edge-root
+
 lxc_devices:
   - /dev/net/tun
 

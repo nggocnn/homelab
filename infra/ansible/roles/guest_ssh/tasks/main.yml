@@ -1,13 +1,15 @@
 ---
-- name: Authorise root SSH keys
+- name: Authorise only the user CA for {{ guest_ssh_user }}
   ansible.posix.authorized_key:
-    user: root
-    key: "{{ item }}"
+    user: "{{ guest_ssh_user }}"
+    key: "{{ guest_ssh_authorized_keys | join('\n') }}"
     state: present
-    exclusive: false
-  loop: "{{ guest_ssh_root_authorized_keys }}"
-  loop_control:
-    label: "{{ item.split() | last }}"
+    exclusive: true
+
+- name: Revoked keys and host certificate
+  ansible.builtin.import_role:
+    name: ssh_ca
+    tasks_from: host
 
 # `validate` runs sshd -t against the candidate file, so a malformed drop-in is never installed.
 - name: Install sshd config {{ guest_ssh_config }}

@@ -8,6 +8,9 @@
 #   ansible-playbook playbooks/00-host.yml -e pve_allow_reboot=false
 #   ansible-playbook playbooks/00-host.yml -e pve_do_dist_upgrade=true
 #   ansible-playbook playbooks/00-host.yml --tags nic,repos
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Configure Proxmox VE hosts
   hosts: pve
   gather_facts: true

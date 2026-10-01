@@ -1,8 +1,8 @@
 ---
 # --- connection -------------------------------------------------------------
-# Container-only key, never authorised on the nodes.
+# The controller key, in by its certificate.
 ansible_user: root
-ansible_ssh_private_key_file: ~/.ssh/lxc.nggocnn.internal
+ansible_ssh_private_key_file: "{{ ssh_controller_key }}"
 ansible_python_interpreter: /usr/bin/python3
 
 # --- dns ---------------------------------------------------------------------
@@ -13,10 +13,10 @@ ansible_python_interpreter: /usr/bin/python3
 lxc_resolvers: "{{ dns_vip }}"
 
 # --- access -----------------------------------------------------------------
-# Root's keys, applied by 03-lxc at creation and by guest_ssh. Additive, never pruned.
+# Root trusts the user CA and nothing else: seeded at creation, kept exclusive by guest_ssh.
+ssh_principal: lxc-root
 lxc_root_authorized_keys:
-  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIB5fkwTEbG6Ldkksg4wg9YMcBOeaqgcoZStFVTklvbQ lxc.nggocnn.internal"
-guest_ssh_root_authorized_keys: "{{ lxc_root_authorized_keys }}"
+  - "{{ ssh_user_ca_line }}"
 
 # --- container ----------------------------------------------------------------
 # Sizing and network defaults: roles/pve_lxc/defaults/main.yml.

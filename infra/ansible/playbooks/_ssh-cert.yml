@@ -1,0 +1,10 @@
+---
+# Imported first by every playbook: re-signs the controller key when its certificate is
+# close to expiry. A play of its own, because a role inside a host play runs after fact
+# gathering has already tried to log in. Needs the user CA in the agent only when signing.
+- name: Controller certificate
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: ssh_ca
+      tags: [always]

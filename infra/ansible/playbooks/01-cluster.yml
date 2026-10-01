@@ -1,5 +1,5 @@
 ---
-# Phase 0 - form the cluster `pve`, created on pve-01.
+# Phase 0 - form the cluster `pve`, created on pve-01, then its pools and its VIP.
 #
 # Run 00-host.yml first: this playbook assumes /etc/hosts, the clocks and the
 # NIC workaround are already in the state that role enforces.
@@ -10,6 +10,9 @@
 
 # Every check that could make formation a mistake runs first, across all nodes,
 # before anything mutates. `pvecm add` is not reversible.
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Preflight
   hosts: pve
   gather_facts: true
@@ -33,6 +36,11 @@
   hosts: pve
   gather_facts: false
   tasks:
+    - name: Node-to-node SSH
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: ssh
+
     - name: Run cluster verification
       ansible.builtin.include_role:
         name: pve_cluster
@@ -46,3 +54,20 @@
       ansible.builtin.include_role:
         name: pve_cluster
         tasks_from: pools
+
+# One address for the web UI and the API, floating across the three nodes.
+#
+# Proxmox has no cluster management address of its own. It does not need one to reach
+# the whole cluster: pveproxy forwards API calls, the node shell and noVNC to whichever
+# node owns the resource, and the session cookie is signed cluster-wide, so a session
+# survives the address moving. What is missing is only the address outliving its node.
+#
+# After formation: the certificate is signed by the cluster CA, and the health check asks
+# corosync whether this node is quorate. Then trust /etc/pve/pve-root-ca.pem in the
+# browser to clear the warning for good.
+- name: Cluster VIP
+  hosts: pve
+  gather_facts: false
+  roles:
+    - pve_vip      # the certificate and the quorum check first
+    - keepalived   # the VIP last, once the name it answers to is right
