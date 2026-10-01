@@ -1,0 +1,30 @@
+---
+# A key on the host. In: ssh_ca_remote {key_pub, cert_path, owner, notify} plus sign.yml's fields.
+- name: Read {{ ssh_ca_remote.key_pub }}
+  ansible.builtin.slurp:
+    src: "{{ ssh_ca_remote.key_pub }}"
+  register: _ssh_ca_pub
+
+- name: Read {{ ssh_ca_remote.cert_path }}
+  ansible.builtin.slurp:
+    src: "{{ ssh_ca_remote.cert_path }}"
+  register: _ssh_ca_old
+  failed_when: false
+
+- name: Sign it
+  ansible.builtin.import_tasks: sign.yml
+  vars:
+    ssh_ca_sign: "{{ ssh_ca_remote | combine({
+      'public_key': _ssh_ca_pub.content | b64decode,
+      'certificate': (_ssh_ca_old.content | default('') | b64decode)
+      }) }}"
+
+- name: Install {{ ssh_ca_remote.cert_path }}
+  ansible.builtin.copy:
+    dest: "{{ ssh_ca_remote.cert_path }}"
+    content: "{{ ssh_ca_cert }}\n"
+    owner: "{{ ssh_ca_remote.owner | default('root') }}"
+    group: "{{ ssh_ca_remote.owner | default('root') }}"
+    mode: "0644"
+  when: ssh_ca_cert | length > 0
+  notify: "{{ ssh_ca_remote.notify | default(omit) }}"

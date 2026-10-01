@@ -1,0 +1,37 @@
+---
+# sshd on a node or guest: the revoked keys and a host certificate.
+
+# First: a RevokedKeys path that does not exist makes sshd refuse every key.
+- name: Install the revoked keys
+  ansible.builtin.copy:
+    dest: /etc/ssh/revoked_keys
+    content: "{{ ssh_revoked_keys | join('\n') }}{{ '\n' if ssh_revoked_keys else '' }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Host certificate
+  ansible.builtin.import_tasks: remote.yml
+  vars:
+    ssh_ca_remote: "{{ ssh_certs.host | combine({
+      'type': 'host',
+      'id': inventory_hostname,
+      'principals': [inventory_hostname, inventory_hostname ~ '.' ~ pve_domain, ansible_host],
+      'key_pub': '/etc/ssh/ssh_host_ed25519_key.pub',
+      'cert_path': '/etc/ssh/ssh_host_ed25519_key-cert.pub',
+      'notify': 'restart sshd for the CA config'
+      }) }}"
+
+# `validate` runs sshd -t against the candidate file, so a malformed drop-in is never installed.
+- name: Install the sshd CA config
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/20-ssh-ca.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+    content: |
+      # Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+      RevokedKeys /etc/ssh/revoked_keys
+      HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
+  notify: restart sshd for the CA config

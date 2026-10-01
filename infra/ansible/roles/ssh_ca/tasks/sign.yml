@@ -1,0 +1,95 @@
+---
+# Signs on the controller. In: ssh_ca_sign {type, id, principals, valid, renew, options,
+# public_key, certificate}, the last two as content. Out: ssh_ca_cert, ssh_ca_cert_changed.
+# Signs only when the certificate is missing, differs, or expires within `renew`.
+
+- name: Work directory for {{ ssh_ca_sign.id }}
+  ansible.builtin.tempfile:
+    state: directory
+    path: "{{ ssh_ca_dir | expanduser }}" # beside the CA: 0700, and not a tmpfs, where openssh_cert's chattr fails
+    prefix: .sign-
+  delegate_to: localhost
+  become: false
+  register: _ssh_ca_tmp
+  changed_when: false
+  check_mode: false
+
+- name: Sign {{ ssh_ca_sign.id }}
+  delegate_to: localhost
+  become: false
+  module_defaults:
+    community.crypto.openssh_cert:
+      type: "{{ ssh_ca_sign.type }}"
+      public_key: "{{ _ssh_ca_tmp.path }}/key.pub"
+      path: "{{ _ssh_ca_tmp.path }}/key-cert.pub"
+      signing_key: "{{ ssh_ca_dir | expanduser }}/{{ ssh_ca_sign.type }}_ca.pub"
+      use_agent: true
+      identifier: "{{ ssh_ca_sign.id }}"
+      principals: "{{ ssh_ca_sign.principals }}"
+      options: "{{ ssh_ca_sign.options | default([]) }}"
+      valid_from: "-5m"
+      valid_to: "{{ ssh_ca_sign.valid }}"
+      valid_at: "{{ ssh_ca_sign.renew }}"
+      ignore_timestamps: true
+      regenerate: full_idempotence
+  block:
+    - name: Stage the public key
+      ansible.builtin.copy:
+        dest: "{{ _ssh_ca_tmp.path }}/key.pub"
+        content: "{{ ssh_ca_sign.public_key | trim }}\n"
+        mode: "0600"
+      changed_when: false
+      check_mode: false
+
+    - name: Stage the current certificate
+      ansible.builtin.copy:
+        dest: "{{ _ssh_ca_tmp.path }}/key-cert.pub"
+        content: "{{ ssh_ca_sign.certificate | trim }}\n"
+        mode: "0600"
+      when: ssh_ca_sign.certificate | default('') | trim | length > 0
+      changed_when: false
+      check_mode: false
+
+    - name: Check whether a certificate is due
+      community.crypto.openssh_cert:
+      check_mode: true
+      register: _ssh_ca_due
+
+    - name: Read the agent's keys
+      ansible.builtin.command:
+        cmd: ssh-add -L
+      register: _ssh_ca_agent
+      when: _ssh_ca_due.changed
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Assert the {{ ssh_ca_sign.type }} CA is in the agent
+      ansible.builtin.assert:
+        that: lookup('ansible.builtin.file', (ssh_ca_dir | expanduser) ~ '/' ~ ssh_ca_sign.type ~ '_ca.pub').split()[1] in _ssh_ca_agent.stdout
+        fail_msg: "A certificate for {{ ssh_ca_sign.id }} is due - load the CA first: ssh-add -t 1h {{ ssh_ca_dir }}/{{ ssh_ca_sign.type }}_ca"
+        quiet: true
+      when: _ssh_ca_due.changed and not ansible_check_mode
+
+    - name: Sign the key
+      community.crypto.openssh_cert:
+      when: _ssh_ca_due.changed
+      register: _ssh_ca_signed
+
+    - name: Look for the certificate
+      ansible.builtin.stat:
+        path: "{{ _ssh_ca_tmp.path }}/key-cert.pub"
+      register: _ssh_ca_file
+      check_mode: false
+
+    - name: Read the certificate
+      ansible.builtin.set_fact:
+        ssh_ca_cert: "{{ lookup('ansible.builtin.file', _ssh_ca_tmp.path ~ '/key-cert.pub') if _ssh_ca_file.stat.exists else '' }}"
+        ssh_ca_cert_changed: "{{ _ssh_ca_due.changed }}"
+  always:
+    - name: Remove the work directory
+      ansible.builtin.file:
+        path: "{{ _ssh_ca_tmp.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false

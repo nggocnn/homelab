@@ -1,0 +1,19 @@
+---
+# A key on the controller. In: ssh_ca_local {key, cert}: the private key path and an ssh_certs entry.
+- name: Sign {{ ssh_ca_local.key }}
+  ansible.builtin.import_tasks: sign.yml
+  vars:
+    ssh_ca_sign: "{{ ssh_ca_local.cert | combine({
+      'type': 'user',
+      'public_key': lookup('ansible.builtin.file', (ssh_ca_local.key | expanduser) ~ '.pub'),
+      'certificate': lookup('ansible.builtin.file', (ssh_ca_local.key | expanduser) ~ '-cert.pub', errors='ignore') | default('', true)
+      }) }}"
+
+- name: Write {{ ssh_ca_local.key }}-cert.pub
+  ansible.builtin.copy:
+    dest: "{{ ssh_ca_local.key | expanduser }}-cert.pub"
+    content: "{{ ssh_ca_cert }}\n"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when: ssh_ca_cert | length > 0

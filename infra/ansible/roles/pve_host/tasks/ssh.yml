@@ -5,6 +5,7 @@
     key: "{{ item }}"
     state: present
     exclusive: false
+    follow: true # a clustered node's file is a symlink into /etc/pve; replacing it splits the node off
   loop: "{{ pve_root_authorized_keys }}"
   loop_control:
     label: "{{ item.split() | last }}"
@@ -30,3 +31,8 @@
       PasswordAuthentication no
       KbdInteractiveAuthentication no
   notify: reload sshd
+
+- name: Revoked keys and host certificate
+  ansible.builtin.import_role:
+    name: ssh_ca
+    tasks_from: host

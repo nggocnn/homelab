@@ -1,0 +1,9 @@
+---
+# The controller's own certificate, once per run and before any host is contacted.
+- name: Controller certificate
+  ansible.builtin.import_tasks: local.yml
+  vars:
+    ssh_ca_local:
+      key: "{{ ssh_controller_key }}"
+      cert: "{{ ssh_certs.controller }}"
+  run_once: true
