@@ -23,6 +23,7 @@
     key: "{{ _root_pubkey.content | b64decode }}"
     state: present
     exclusive: false
+    follow: true # the primary's file is a symlink into /etc/pve once the cluster exists
   delegate_to: "{{ pve_cluster_primary }}"
 
 - name: Read the primary's SSH host key

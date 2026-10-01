@@ -1,0 +1,44 @@
+---
+# Node-to-node root SSH, which migration and replication ride on. A join can finish
+# without registering the node's keys in /etc/pve, and nothing fails until a migration does.
+
+- name: Check this node's keys are registered with the cluster
+  ansible.builtin.shell:
+    cmd: >-
+      test -L /root/.ssh/authorized_keys
+      && test -s /etc/pve/nodes/{{ inventory_hostname }}/ssh_known_hosts
+      && grep -qF "$(cut -d' ' -f2 /root/.ssh/id_rsa.pub)" /etc/pve/priv/authorized_keys
+  register: _ssh_registered
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Register them
+  ansible.builtin.command:
+    cmd: pvecm updatecerts
+  when: _ssh_registered.rc != 0
+  throttle: 1 # writes the shared files in /etc/pve
+  changed_when: true
+
+# The way Proxmox connects: the peer's own known-hosts file, under its node name.
+- name: SSH to every node
+  ansible.builtin.command:
+    cmd: >-
+      ssh -o BatchMode=yes -o ConnectTimeout=5
+      -o HostKeyAlias={{ item }}
+      -o UserKnownHostsFile=/etc/pve/nodes/{{ item }}/ssh_known_hosts
+      root@{{ hostvars[item].ansible_host }} true
+  loop: "{{ groups['pve'] }}"
+  register: _ssh_peers
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert every node is reachable
+  ansible.builtin.assert:
+    that: _ssh_peers.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }} cannot SSH to
+      {{ _ssh_peers.results | rejectattr('rc', 'equalto', 0) | map(attribute='item') | join(', ') }}:
+      {{ _ssh_peers.results | rejectattr('rc', 'equalto', 0) | map(attribute='stderr') | join(' | ') }}
+    quiet: true
