@@ -21,11 +21,12 @@ delegation, so it can never collide and doesn't depend on renewing a domain name
 
 ## Step 0 - Before you touch anything
 
-**Verify SSH keys:** `root-ssh-keys` in `answer.toml` is an array - put in the public key there:
+**Verify SSH keys:** `root-ssh-keys` in `answer.toml` holds the user CA line and the break-glass key:
 
 ```bash
-cat ~/.ssh/*.pub               # put public key into `root-ssh-keys` in `answer.toml`
-ssh-keygen -lf ~/.ssh/id_ed25519.pub    # confirms you hold the private half
+printf "'cert-authority,principals=\"pve-root\" %s'\n" "$(cat ~/.ssh/ca/user_ca.pub)"   # Ansible certificates
+cat ~/.ssh/break-glass.nggocnn.internal.pub                                           # passphrase, offline only
+sed -n "/^root-ssh-keys/,/]/p" answer.toml | grep -o "'.*'" | tr -d "'" | ssh-keygen -lf -   # expect two ED25519
 ```
 
 With `DO_SSH_HARDEN=1` there is no password fallback over SSH.
@@ -137,11 +138,11 @@ lsblk -o NAME,SIZE,MODEL,TRAN,LABEL,FSTYPE
 ```
 
 ```bash
-sudo dd if=pve-01.iso of=/dev/sdX bs=4M status=progress oflag=direct conv=fsync
+sudo dd if=pve-0X.iso of=/dev/sdX bs=4M status=progress oflag=direct conv=fsync
 sync
 ```
 
-Update `/dev/sdX` with whole device (`/dev/sdb`), not a partition (`/dev/sdb1`).
+Update `pve-0X.iso` and `/dev/sdX` with whole device (`/dev/sdb`), not a partition (`/dev/sdb1`).
 
 Recover an unlabeled stick's identity:
 

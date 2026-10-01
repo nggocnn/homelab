@@ -11,7 +11,7 @@ pve_gateway: 10.10.10.1
 
 # Floating addresses, held by keepalived. Not guests.
 # The name is what a browser is pointed at, and it is a SAN on every node certificate.
-pve_vip: 10.10.10.50
+pve_vip: 10.10.10.10
 pve_vip_name: "pve.{{ pve_domain }}"
 dns_vip: 10.10.10.51
 
@@ -19,3 +19,28 @@ dns_vip: 10.10.10.51
 telegram_bot_token_file: "{{ playbook_dir }}/../telegram-bot-token"
 telegram_chat_id_file: "{{ playbook_dir }}/../telegram-chat-id"
 telegram_chat_id: "{{ lookup('ansible.builtin.file', telegram_chat_id_file, errors='ignore') | default('', true) | trim }}"
+
+# --- ssh ---------------------------------------------------------------------
+# Two CAs in ssh_ca_dir, passphrase-protected, signing through ssh-agent: the user CA signs
+# client keys, the host CA host keys. Public halves are read from disk, never committed.
+ssh_ca_dir: ~/.ssh/ca
+ssh_user_ca_public_key: "{{ lookup('ansible.builtin.file', (ssh_ca_dir | expanduser) ~ '/user_ca.pub') }}"
+ssh_host_ca_public_key: "{{ lookup('ansible.builtin.file', (ssh_ca_dir | expanduser) ~ '/host_ca.pub') }}"
+
+# The authorized_keys line: a certificate gets in when it carries this host's ssh_principal.
+ssh_user_ca_line: 'cert-authority,principals="{{ ssh_principal }}" {{ ssh_user_ca_public_key }}'
+# The known_hosts line: any host with a host certificate, by name or address.
+ssh_host_ca_line: "@cert-authority *.{{ pve_domain }},{{ pve_subnet_cidr | regex_replace('\\.0/24$', '.*') }} {{ ssh_host_ca_public_key }}"
+
+# Certificates: who may go where, for how long, and how early a run re-signs.
+ssh_controller_key: ~/.ssh/ansible.nggocnn.internal   # Ansible, no passphrase
+ssh_personal_key: ~/.ssh/dev.nggocnn.internal     # passphrase, through the bastion
+ssh_break_glass_key: ~/.ssh/break-glass.nggocnn.internal   # passphrase, nodes only, when the CA is lost
+ssh_certs:
+  controller: { id: ansible@controller, principals: [pve-root, lxc-root, edge-root, vm-nggocnn], valid: +7d, renew: +1d }
+  personal: { id: nggocnn@laptop, principals: [pve-root, lxc-root, edge-root, vm-nggocnn, bastion], valid: +52w, renew: +30d }
+  bastion: { principals: [lxc-root, vm-nggocnn], valid: +30d, renew: +7d }
+  host: { valid: +52w, renew: +30d }
+
+# Public keys refused everywhere, whatever certificate they carry. Then re-run the host's playbook.
+ssh_revoked_keys: []

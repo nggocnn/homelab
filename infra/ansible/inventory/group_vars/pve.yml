@@ -1,9 +1,10 @@
 ---
 # --- connection -------------------------------------------------------------
-# The key whose public half went into answer.toml's root-ssh-keys. first-boot.sh
-# set PermitRootLogin prohibit-password, so this key is the only way in over SSH.
+# The controller key, in by its certificate: answer.toml's root-ssh-keys trusts the user CA.
+# Break-glass: ssh_break_glass_key.
 ansible_user: root
-ansible_ssh_private_key_file: ~/.ssh/pve.nggocnn.internal
+ansible_ssh_private_key_file: "{{ ssh_controller_key }}"
+ssh_principal: pve-root
 ansible_python_interpreter: /usr/bin/python3
 
 # --- cluster ----------------------------------------------------------------
@@ -77,7 +78,8 @@ pve_cloud_images:
 # Public keys that may log in as root. Additive: existing keys are never pruned,
 # because pruning the wrong one locks all three nodes out at once.
 pve_root_authorized_keys:
-  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN/HHFuOPfJ2ccXo2XNHVzU0prgcVZu33CmXPLGqLk+s pve.nggocnn.internal"
+  - "{{ ssh_user_ca_line }}"
+  - "{{ lookup('ansible.builtin.file', (ssh_break_glass_key | expanduser) ~ '.pub') }}"
 
 # intel_pstate's "powersave" still reaches full turbo under load - it is a ramp
 # policy, not a frequency cap, and it matters on three always-on boxes.
