@@ -1,0 +1,98 @@
+---
+# The token is created on the primary and handed to Pulse, which keeps it encrypted in
+# nodes.enc. Registered once: a change made in the web UI afterwards stays.
+
+- name: List the connections
+  ansible.builtin.uri:
+    url: "{{ _api }}/config/nodes"
+    url_username: "{{ pulse_user }}"
+    url_password: "{{ _pulse_password }}"
+    force_basic_auth: true
+  register: _pulse_nodes
+  no_log: true
+
+- name: Mint the API token and register
+  when: _pulse_nodes.json | default([], true) | selectattr('type', 'equalto', 'pve') | list | length == 0
+  block:
+    - name: List the API users
+      ansible.builtin.command:
+        cmd: pvesh get /access/users --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_users
+      changed_when: false
+      check_mode: false
+
+    - name: Create {{ pulse_pve_user }}
+      ansible.builtin.command:
+        cmd: pveum user add {{ pulse_pve_user }} --comment "Pulse, read-only"
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: pulse_pve_user not in (_pve_users.stdout | from_json | map(attribute='userid'))
+      changed_when: true
+
+    - name: Read the ACL
+      ansible.builtin.command:
+        cmd: pvesh get /access/acl --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_acl
+      changed_when: false
+      check_mode: false
+
+    # Read-only on the whole tree. The vendor's installer adds PVEDatastoreAdmin on /storage
+    # for backup contents; not here.
+    - name: Grant PVEAuditor on /
+      ansible.builtin.command:
+        cmd: pveum acl modify / --user {{ pulse_pve_user }} --role PVEAuditor
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: >-
+        _pve_acl.stdout | from_json
+        | selectattr('ugid', 'equalto', pulse_pve_user)
+        | selectattr('roleid', 'equalto', 'PVEAuditor')
+        | selectattr('path', 'equalto', '/')
+        | list | length == 0
+      changed_when: true
+
+    # The secret is shown once, at creation. Pulse does not hold it, so an orphaned token
+    # is dropped and a fresh one minted.
+    - name: List the tokens
+      ansible.builtin.command:
+        cmd: pvesh get /access/users/{{ pulse_pve_user }}/token --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_tokens
+      changed_when: false
+      check_mode: false
+
+    - name: Drop the orphaned token
+      ansible.builtin.command:
+        cmd: pveum user token remove {{ pulse_pve_user }} {{ pulse_pve_token }}
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      when: pulse_pve_token in (_pve_tokens.stdout | from_json | map(attribute='tokenid'))
+      changed_when: true
+
+    # --privsep 0: the token carries the user's privileges, which are read-only already.
+    - name: Create the token
+      ansible.builtin.command:
+        cmd: pveum user token add {{ pulse_pve_user }} {{ pulse_pve_token }} --privsep 0 --output-format json
+      delegate_to: "{{ groups['pve_primary'][0] }}"
+      register: _pve_token_new
+      changed_when: true
+      no_log: true
+
+    # Pulse tests the connection before it saves. The node certificates are from the cluster CA.
+    - name: Register {{ pulse_pve_host }}
+      ansible.builtin.uri:
+        url: "{{ _api }}/config/nodes"
+        method: POST
+        url_username: "{{ pulse_user }}"
+        url_password: "{{ _pulse_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: pve
+          name: "{{ pulse_pve_name }}"
+          host: "{{ pulse_pve_host }}"
+          tokenName: "{{ pulse_pve_user }}!{{ pulse_pve_token }}"
+          tokenValue: "{{ (_pve_token_new.stdout | from_json).value }}"
+          verifySSL: false
+        status_code: [200, 201]
+      changed_when: true
+      no_log: true

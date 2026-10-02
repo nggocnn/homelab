@@ -1,0 +1,21 @@
+[Unit]
+Description=Pulse
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=pulse
+Group=pulse
+WorkingDirectory={{ pulse_dir }}
+Environment=HOME={{ pulse_dir }}
+Environment=PULSE_DATA_DIR={{ pulse_data_dir }}
+Environment=FRONTEND_PORT={{ pulse_port }}
+Environment=PULSE_DEPLOYMENT_METHOD=systemd
+Environment=PULSE_TELEMETRY={{ pulse_telemetry | lower }}
+EnvironmentFile={{ pulse_data_dir }}/.env
+ExecStart={{ pulse_dir }}/bin/pulse
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

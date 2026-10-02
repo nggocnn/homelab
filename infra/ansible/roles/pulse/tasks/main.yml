@@ -1,0 +1,96 @@
+---
+# Pulse: the release tarball, the login from .env, then the cluster through its API.
+# Not the vendor's install.sh - that adds a daily auto-update timer and its own API user.
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _pulse_password: "{{ lookup('ansible.builtin.file', pulse_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that:
+      - _pulse_password | length >= 8
+      - "\"'\" not in _pulse_password"   # .env quotes it with them
+    fail_msg: "Missing or short {{ pulse_password_file | realpath }} - create it with: read -rsp 'Pulse password: ' p && printf '%s' \"$p\" > pulse-password"
+    quiet: true
+
+- name: Create the pulse user
+  ansible.builtin.user:
+    name: pulse
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ pulse_dir }}"
+    create_home: false
+
+- name: Create the directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ pulse_dir }}", owner: root, mode: "0755" } # the pulse user executes the binary
+    - { path: "{{ pulse_data_dir }}", owner: pulse, mode: "0700" }
+
+- name: Read the installed version
+  ansible.builtin.command:
+    cmd: "{{ pulse_dir }}/bin/pulse --version"
+  register: _pulse_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# 280 MB: the server serves the agent binaries of every platform from bin/.
+- name: Install Pulse {{ pulse_version }}
+  ansible.builtin.unarchive:
+    src: https://github.com/rcourtman/Pulse/releases/download/v{{ pulse_version }}/pulse-v{{ pulse_version }}-linux-amd64.tar.gz
+    dest: "{{ pulse_dir }}"
+    remote_src: true
+    owner: root
+    group: root
+  when: pulse_version not in _pulse_installed.stdout | default('')
+  notify: restart pulse
+
+- name: Write the login
+  ansible.builtin.template:
+    src: pulse.env.j2
+    dest: "{{ pulse_data_dir }}/.env"
+    owner: pulse
+    group: pulse
+    mode: "0600"
+  no_log: true
+  notify: restart pulse
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: pulse.service.j2
+    dest: /etc/systemd/system/pulse.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart pulse
+
+- name: Enable and start pulse
+  ansible.builtin.systemd_service:
+    name: pulse
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush handlers so the API takes the login
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the API
+  ansible.builtin.uri:
+    url: http://127.0.0.1:{{ pulse_port }}/api/health
+  register: _pulse_health
+  until: _pulse_health.status == 200
+  retries: 30
+  delay: 2
+
+- name: Register the cluster
+  ansible.builtin.import_tasks: pve.yml
+  vars:
+    _api: http://127.0.0.1:{{ pulse_port }}/api

@@ -1,0 +1,21 @@
+---
+pulse_version: "6.4.5"
+pulse_dir: /opt/pulse
+pulse_data_dir: /etc/pulse   # settings, the encrypted node credentials and the SQLite history
+pulse_port: 7655
+
+# Login. The file holds the plaintext, read on the controller and never echoed;
+# Pulse hashes it in memory on start.
+pulse_user: admin
+pulse_password_file: "{{ playbook_dir }}/../pulse-password"
+
+# Usage telemetry to the vendor is on unless switched off.
+pulse_telemetry: false
+
+# The cluster, through the VIP: Pulse finds the members from there. No agent on the nodes.
+pulse_pve_name: pve
+pulse_pve_host: "https://{{ pve_vip }}:8006"
+
+# Read-only API user and token, created on the cluster primary.
+pulse_pve_user: pulse@pve
+pulse_pve_token: pulse

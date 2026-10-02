@@ -1,0 +1,17 @@
+---
+# pulse-01: Pulse, reading the cluster through the Proxmox API with a read-only token.
+# A trial beside Beszel and Prometheus - no agents, no notifications, so nothing alerts twice.
+#
+#   (umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)
+#   ansible-playbook playbooks/24-pulse.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Pulse
+  hosts: pulse
+  gather_facts: false
+  roles:
+    - pve_lxc
+    - guest_ssh
+    - apt_packages
+    - pulse

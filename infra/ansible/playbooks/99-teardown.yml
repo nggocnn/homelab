@@ -68,7 +68,7 @@
         cmd: pveum pool delete {{ item | quote }}
       loop: "{{ _pools.stdout | from_json | map(attribute='poolid') | list }}"
 
-    # Its token config lived on monitor-01. Deleting the user drops its tokens and ACLs too.
+    # Their tokens lived on monitor-01 and pulse-01. Deleting the user drops its tokens and ACLs too.
     - name: List the API users
       ansible.builtin.command:
         cmd: pvesh get /access/users --output-format json
@@ -76,10 +76,11 @@
       changed_when: false
       check_mode: false
 
-    - name: Remove the Prometheus API user
+    - name: Remove the monitoring API users
       ansible.builtin.command:
-        cmd: pveum user delete prometheus@pve
-      when: "'prometheus@pve' in (_pve_users.stdout | from_json | map(attribute='userid'))"
+        cmd: pveum user delete {{ item }}
+      loop: [prometheus@pve, pulse@pve]
+      when: item in (_pve_users.stdout | from_json | map(attribute='userid'))
 
 - name: Nodes
   hosts: pve
