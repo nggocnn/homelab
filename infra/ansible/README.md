@@ -24,7 +24,7 @@ ansible pve -m ping                       # expect 3 × SUCCESS
 
 `requirements.yml` pins `ansible.posix >= 2.2.2`. The apt package's 2.1.0 prints a `to_native` deprecation warning.
 
-Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH with `~/.ssh/<key>`.
+Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and a 7-day certificate - see [SSH access](#ssh-access).
 
 ---
 
@@ -33,30 +33,27 @@ Connection details come from `inventory/group_vars/pve.yml`: `root` over SSH wit
 | Playbook | What it does |
 | --- | --- |
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent - a second run must report `changed=0`. |
-| `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**. No-op once formed. |
+| `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the three nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates`, `pve_isos` and `pve_cloud_images` (to `local:import`) on every node's `local` storage, or only on an entry's `nodes` - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
-| `playbooks/03-lxc.yml` | Creates the `lxc` inventory hosts on their `lxc_node` (create-only), trusts their SSH host keys, then the `guest_ssh` role: root keys and key-only sshd (`guest_ssh_harden: false` to turn off). |
-| `playbooks/04-vip.yml` | `pve_vip` (`10.10.10.50`) floating across the three nodes, so the web UI and the API have one address. Each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. |
-| `playbooks/10-cloudflared.yml` | `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
+| `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01..03`, each advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve each device's route in the admin console). Tailscale routes through one of them at a time and fails over to another. |
-| `playbooks/12-bastion.yml` | `bastion-01`: console user `nggocnn` (password, sudo) with the guest key and an `~/.ssh/config` for every container and VM. No node access. Re-run after adding a guest - creation seeds only the controller's key. |
+| `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
 | `playbooks/13-dns.yml` | `dns-01..03`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the three. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
-| `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers (`pct set`) at `lxc_resolvers`. Last, because creation uses the gateway - on a first build `dns_vip` does not exist yet. A container applies it on its next start. |
+| `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers created so far (`pct set`) at `lxc_resolvers`. Until 13 has run, creation uses the gateway; containers created later start on `dns_vip`. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node and VM (per-container stats on Docker hosts), and alerts to Telegram. Host hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
-| `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with key-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 12, 20 and 21 for its DNS record, bastion access and monitoring. |
+| `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
 | `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, exporters, Alloy) and the `prometheus@pve` API user. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
 
 ```bash
+ssh-add -t 1h ~/.ssh/ca/user_ca ~/.ssh/ca/host_ca          # a run that signs asks for it
 ansible-playbook playbooks/00-host.yml --check --diff     # read the diff first
 ansible-playbook playbooks/00-host.yml                    # first run
 ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
-ansible-playbook playbooks/03-lxc.yml
-ansible-playbook playbooks/04-vip.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
@@ -81,6 +78,57 @@ ansible-playbook playbooks/30-docker.yml
 ansible-playbook playbooks/99-teardown.yml               # back to after 01, asks first
 ```
 
+### SSH access
+
+Two CAs in `~/.ssh/ca`, both with a passphrase and a copy offline. The user CA signs client
+keys, the host CA signs host keys. No guest has a static key in `authorized_keys`.
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/ca/user_ca -C user_ca.nggocnn.internal   # public halves are read from here, never committed
+ssh-keygen -t ed25519 -f ~/.ssh/ca/host_ca -C host_ca.nggocnn.internal
+ssh-keygen -t ed25519 -f ~/.ssh/ansible.nggocnn.internal -N '' -C ansible.nggocnn.internal
+ssh-add -t 1h ~/.ssh/ca/user_ca ~/.ssh/ca/host_ca                          # the playbooks sign through the agent
+```
+
+A host accepts a certificate that carries its `ssh_principal`:
+
+| Principal | Hosts | Login |
+| --- | --- | --- |
+| `pve-root` | nodes | root |
+| `lxc-root` | containers | root |
+| `edge-root` | `tailscale`, `cloudflared` | root |
+| `vm-nggocnn` | VMs | nggocnn |
+| `bastion` | `bastion-01` | nggocnn |
+
+`ssh_certs` in `group_vars/all.yml` sets who holds which principals and for how long. Each
+playbook re-signs what is close to expiry: the controller key (7 days) first, host keys in
+`ssh_ca`, the bastion's and the personal key in `12-bastion.yml`.
+
+From the laptop, through the bastion:
+
+```
+# ~/.ssh/config
+Host bastion-01.nggocnn.internal
+    HostName 10.10.10.120
+Host *.nggocnn.internal !bastion-01.nggocnn.internal !pve-0*.nggocnn.internal
+    ProxyJump bastion-01.nggocnn.internal
+Host *.nggocnn.internal
+    User nggocnn
+    IdentityFile ~/.ssh/dev.nggocnn.internal
+    IdentitiesOnly yes
+```
+
+```bash
+ansible localhost -m debug -a var=ssh_host_ca_line    # the one line ~/.ssh/known_hosts needs
+ssh root@dns-01.nggocnn.internal
+```
+
+- Revoke: add the public key to `ssh_revoked_keys`, re-run the playbooks of the hosts it reached.
+- Rotate the bastion's key: `12-bastion.yml -e bastion_rotate=true`. No guest is touched.
+- Rotate a CA: list the old and the new key side by side, re-sign everything, drop the old.
+- Break-glass: `ssh -i ~/.ssh/break-glass.nggocnn.internal root@10.10.10.11`, then `pct enter`.
+- Tailscale: to make the bastion the only way in, restrict the tailnet policy to `10.10.10.120:22` and the web UI ports for personal devices, the whole subnet for the controller only.
+
 ### Monitoring
 
 Three tools, split so none repeats another. Each alerts to Telegram on its own.
@@ -97,7 +145,7 @@ and nothing else - the rest of the host belongs to Beszel.
 
 ### Cluster VIP
 
-`10.10.10.50` floats across the three nodes: `https://pve.nggocnn.internal:8006` reaches the
+`10.10.10.10` floats across the three nodes: `https://pve.nggocnn.internal:8006` reaches the
 cluster whichever node is up. Proxmox has no management address of its own and needs none to be
 cluster-wide - `pveproxy` forwards API calls, the node shell and noVNC to whichever node owns the
 resource, and the session cookie is signed cluster-wide, so a session survives the address moving.
@@ -117,7 +165,7 @@ add one. Trust the cluster CA in the browser and the warning goes for good:
 ansible pve-01 -m fetch -a 'src=/etc/pve/pve-root-ca.pem dest=~/ flat=yes'
 ```
 
-Measured at 5/s against `https://10.10.10.50:8006/`, reading `NodeName` out of the response so
+Measured at 5/s against `https://10.10.10.10:8006/`, reading `NodeName` out of the response so
 each sample records which node answered:
 
 | Event | Outage | Path |
@@ -139,9 +187,9 @@ gone read-only.
 Pi-hole's admin is on `:80`, AdGuard's on `:8080`. Query history is per container and does not
 merge, so it lives wherever `dns_vip` has been.
 
-Containers are *created* on `pve_gateway` and *moved* to `dns_vip` by `14-dns-clients.yml`.
-That split keeps the playbook order linear: on a first build nothing points at the resolver pair
-until step 13 has built it. `lxc_nameserver` is the creation value, `lxc_resolvers` the steady state.
+Containers created before step 13 start on `pve_gateway` and are *moved* to `dns_vip` by
+`14-dns-clients.yml`; the ones created after it start on `dns_vip`. That keeps the playbook
+order linear. `lxc_nameserver` is the creation value, `lxc_resolvers` the steady state.
 
 The `dns` group stays on the gateway - it is the service itself - and `tailscale` and
 `cloudflared` keep the gateway behind the VIP, so an access path can still reach its control
@@ -233,7 +281,7 @@ ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertis
 | `webtitle` | `webtitle.yml` | The browser tab titled `pve_web_title` instead of the node name, with the same APT `Post-Invoke` hook as the nag. Off when `pve_web_title` is empty. |
 | `hosts` | `hostsfile.yml` | `/etc/hosts` templated with all three nodes; asserts `hostname -f`. |
 | `time` | `time.yml` | chrony running, and asserts the clock is actually synchronised. |
-| `ssh` | `ssh.yml` | Root's authorised keys (additive - never pruned) and key-only login, installed through `sshd -t` validation protecting from a malformed drop-in. |
+| `ssh` | `ssh.yml` | Root's authorised keys - the user CA and the break-glass key, additive - key-only login, the revoked keys and a host certificate, installed through `sshd -t` validation protecting from a malformed drop-in. |
 | `tuning` | `tuning.yml` | `vm.swappiness=10`, journal capped at 1 G. |
 | `iommu` | `iommu.yml` | `intel_iommu=on iommu=pt` merged into the bootloader **by whole token**, plus the vfio modules. |
 | `power` | `power.yml` | CPU governor `powersave`, EPP `balance_power`, PCI runtime PM (NIC excluded), asserted afterwards. |
@@ -257,12 +305,15 @@ node's `/etc/pve`, a node's name is immutable once it is a member.
 2. **Formation**, `serial: 1` - `pve-01` runs `pvecm create pve`, then each other node
    joins with `--use_ssh`. Concurrent joins against one primary are unsafe.
 
-3. **Verification**, asked of *every* node, not just the primary: quorate, three members,
+3. **Verification**, asked of *every* node, not just the primary: root SSH to every node the
+   way Proxmox connects (a node missing from `/etc/pve` is registered with `pvecm updatecerts` first), quorate, three members,
    the right cluster name, and `/etc/pve/nodes` matching the inventory. A node can believe
    it is a member while the rest of the cluster disagrees; only asking all of them catches
    that.
 
 4. **Pools**, on `pve-01` only - each `pve_pools` entry created, or its comment corrected. Never deleted.
+
+5. **VIP**, on every node - see [Cluster VIP](#cluster-vip).
 
 The formation authorises the joiner's root key on the primary and adds the primary's host key
 to the joiner's `known_hosts` first. That second step is load-bearing: `pvecm add
