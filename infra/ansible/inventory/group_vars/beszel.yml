@@ -1,4 +1,5 @@
 ---
 # --- container ----------------------------------------------------------------
+lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml
 lxc_pool: infrastructure
 lxc_disk_gb: 8   # SQLite history

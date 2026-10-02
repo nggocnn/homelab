@@ -6,10 +6,15 @@
 #   (umask 077; read -rsp 'Bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
 #   read -rp 'Chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c
 #   ansible-playbook playbooks/20-beszel.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Beszel hub
   hosts: beszel
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - beszel_hub
 
 - name: Beszel agents

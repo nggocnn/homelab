@@ -1,5 +1,6 @@
 ---
 # --- container ----------------------------------------------------------------
+lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml
 lxc_pool: infrastructure
 lxc_cores: 2
 lxc_memory_mb: 2048

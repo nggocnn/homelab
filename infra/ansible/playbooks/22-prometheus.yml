@@ -6,6 +6,9 @@
 #
 #   (umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)
 #   ansible-playbook playbooks/22-prometheus.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Node exporters
   hosts: pve
   gather_facts: false
@@ -23,6 +26,8 @@
   hosts: monitor
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - apt_packages
     - pve_exporter
     - prometheus
