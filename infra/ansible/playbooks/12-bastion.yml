@@ -1,22 +1,46 @@
 ---
-# Gate to the guests: nggocnn with a password (console, sudo) and a key (SSH).
-# Re-run after adding a container or VM so the bastion key is authorised on it.
+# bastion-01: the one way in over SSH. usser with a password (console, sudo) and a
+# certificate (SSH), and a short-lived certificate of its own for the guests behind it.
+# Re-run to renew the certificates, or after adding a guest for its ~/.ssh/config alias.
 #
 #   mkpasswd -m yescrypt > bastion-password.hash
+#   ssh-keygen -t ed25519 -f ~/.ssh/dev.nggocnn.internal # once, with a passphrase
 #   ansible-playbook playbooks/12-bastion.yml
+#   ansible-playbook playbooks/12-bastion.yml -e bastion_rotate=true              # new guest key
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Bastion
   hosts: bastion
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - bastion
 
-- name: Authorise the bastion on the guests
-  hosts: lxc:vm
+# The laptop's key, for ProxyJump through the bastion.
+- name: Personal certificate
+  hosts: localhost
   gather_facts: false
   tasks:
-    - name: Authorise the bastion key for {{ ansible_user }}
-      ansible.posix.authorized_key:
-        user: "{{ ansible_user }}"
-        key: "{{ hostvars[groups['bastion'][0]].bastion_public_key }}"
-        state: present
-        exclusive: false
+    - name: Look for {{ ssh_personal_key }}
+      ansible.builtin.stat:
+        path: "{{ ssh_personal_key | expanduser }}.pub"
+      register: _personal
+
+    - name: Sign the personal key
+      when: _personal.stat.exists
+      block:
+        - name: Sign the personal key
+          ansible.builtin.import_role:
+            name: ssh_ca
+            tasks_from: local
+          vars:
+            ssh_ca_local:
+              key: "{{ ssh_personal_key }}"
+              cert: "{{ ssh_certs.personal }}"
+
+    - name: Report the missing key
+      ansible.builtin.debug:
+        msg: "No {{ ssh_personal_key }} - create it with: ssh-keygen -t ed25519 -f {{ ssh_personal_key }}"
+      when: not _personal.stat.exists

@@ -1,6 +1,6 @@
 # Managed by Ansible (homelab/infra/ansible) - do not edit by hand
-# Guests only, no nodes.
-{% for host in (groups['lxc'] + groups['vm']) | reject('equalto', inventory_hostname) %}
+# The guests the certificate reaches. No nodes, no edge containers.
+{% for host in (groups['lxc'] + groups['vm']) | reject('equalto', inventory_hostname) if hostvars[host].ssh_principal in ssh_certs.bastion.principals %}
 Host {{ host }}
     HostName {{ hostvars[host].ansible_host }}
     User {{ hostvars[host].ansible_user }}
@@ -9,4 +9,3 @@ Host {{ host }}
 Host *
     IdentityFile {{ bastion_identity_file }}
     IdentitiesOnly yes
-    StrictHostKeyChecking accept-new

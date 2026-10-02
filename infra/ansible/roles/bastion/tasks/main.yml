@@ -37,15 +37,12 @@
     group: "{{ bastion_user }}"
     mode: "0700"
 
-- name: Authorise SSH keys for {{ bastion_user }}
+- name: Authorise only the listed keys for {{ bastion_user }}
   ansible.posix.authorized_key:
     user: "{{ bastion_user }}"
-    key: "{{ item }}"
+    key: "{{ bastion_authorized_keys | join('\n') }}"
     state: present
-    exclusive: false
-  loop: "{{ bastion_authorized_keys }}"
-  loop_control:
-    label: "{{ item.split() | last }}"
+    exclusive: true
 
 - name: Write ~/.ssh/config
   ansible.builtin.template:
@@ -55,8 +52,7 @@
     group: "{{ bastion_user }}"
     mode: "0600"
 
-# Created once, then left alone. 12-bastion.yml authorises the public half on the guests.
-- name: Generate the container key
+- name: Generate the guest key
   community.crypto.openssh_keypair:
     path: "{{ bastion_identity_file }}"
     type: ed25519
@@ -64,9 +60,26 @@
     owner: "{{ bastion_user }}"
     group: "{{ bastion_user }}"
     mode: "0600"
-    regenerate: never
-  register: _keypair
+    regenerate: "{{ 'always' if bastion_rotate | bool else 'never' }}"
 
-- name: Publish the public key to the play
-  ansible.builtin.set_fact:
-    bastion_public_key: "{{ _keypair.public_key }} {{ bastion_user }}@{{ inventory_hostname }}"
+- name: Certificate for the guest key
+  ansible.builtin.import_role:
+    name: ssh_ca
+    tasks_from: remote
+  vars:
+    ssh_ca_remote: "{{ ssh_certs.bastion | combine({
+      'type': 'user',
+      'id': bastion_user ~ '@' ~ inventory_hostname,
+      'options': ['clear', 'permit-pty', 'source-address=' ~ ansible_host],
+      'key_pub': bastion_identity_file ~ '.pub',
+      'cert_path': bastion_identity_file ~ '-cert.pub',
+      'owner': bastion_user
+      }) }}"
+
+- name: Trust the host CA
+  ansible.builtin.copy:
+    dest: /etc/ssh/ssh_known_hosts
+    content: "{{ ssh_host_ca_line }}\n"
+    owner: root
+    group: root
+    mode: "0644"

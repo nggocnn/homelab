@@ -1,9 +1,12 @@
 ---
-# Point the nodes and the containers at dns_vip. Runs after 13-dns.yml, never before:
-# creation uses the gateway, because on a first build the resolvers do not exist yet.
+# Point the nodes and the containers created so far at dns_vip. Runs after 13-dns.yml, never
+# before: until then creation uses the gateway. Containers created later start on dns_vip.
 # Containers get it in their config and in the live resolv.conf, so no restart is needed.
 #
 #   ansible-playbook playbooks/14-dns-clients.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Nodes
   hosts: pve
   gather_facts: false
@@ -22,8 +25,13 @@
         cmd: pct config {{ ansible_host.split('.')[-1] }}
       delegate_to: "{{ lxc_node }}"
       changed_when: false
+      failed_when: false
       check_mode: false
       register: _ct_conf
+
+    - name: Skip a container that is not created yet
+      ansible.builtin.meta: end_host
+      when: _ct_conf.rc != 0
 
     # argv, not cmd: several resolvers are one argument with a space in it, and the
     # command module would shlex-split it into two.
