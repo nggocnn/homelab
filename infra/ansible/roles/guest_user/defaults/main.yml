@@ -1,5 +1,4 @@
 ---
-# The login user from cloud-init: password for console and sudo, key for SSH.
+# The login user from cloud-init: password for console and sudo. SSH access is guest_ssh's.
 guest_user: "{{ ansible_user }}"
-guest_user_authorized_keys: "{{ vm_authorized_keys | default([]) }}"
 guest_user_password_file: "{{ vm_password_file }}" # plaintext, gitignored

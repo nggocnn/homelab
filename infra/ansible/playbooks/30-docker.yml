@@ -1,10 +1,13 @@
 ---
 # docker-01: an Ubuntu 24.04 VM from the cloud image, with Docker Engine.
-# After 13-dns.yml: the VM is created with dns_vip. Run 02-images.yml first for the image.
+# After 13-dns.yml: the VM is created with dns_vip. Then re-run 13, 20 and 21 for its DNS record and monitoring. Run 02-images.yml first for the image.
 #
 #   (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)
 #   ansible-playbook playbooks/30-docker.yml
 #   ansible-playbook playbooks/30-docker.yml -e apt_upgrade=true
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Docker VMs
   hosts: docker
   gather_facts: false
