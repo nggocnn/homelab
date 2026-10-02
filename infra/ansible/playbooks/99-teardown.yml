@@ -5,6 +5,9 @@
 #
 #   ansible-playbook playbooks/99-teardown.yml
 #   ansible-playbook playbooks/99-teardown.yml -e teardown_confirm=pve   # no prompt
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Guests, pools and API users
   hosts: pve_primary
   gather_facts: false
