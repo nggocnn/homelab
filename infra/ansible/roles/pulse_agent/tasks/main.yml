@@ -1,0 +1,64 @@
+---
+# Agent on the host: what the Proxmox API does not carry - temperatures, SMART, and CPU,
+# memory, disks and network from the host itself. It dials out to the server.
+
+- name: Install smartmontools and lm-sensors
+  ansible.builtin.apt:
+    name: [smartmontools, lm-sensors]
+    state: present
+
+- name: Read the installed version
+  ansible.builtin.command:
+    cmd: /usr/local/bin/pulse-agent --version
+  register: _pulse_agent_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install the Pulse agent {{ pulse_agent_version }}
+  ansible.builtin.get_url:
+    url: "{{ _release }}/pulse-agent-linux-amd64"
+    checksum: "sha256:{{ _release }}/pulse-agent-linux-amd64.sha256"
+    dest: /usr/local/bin/pulse-agent
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    _release: https://github.com/rcourtman/Pulse/releases/download/v{{ pulse_agent_version }}
+  when: pulse_agent_version not in _pulse_agent_installed.stdout | default('')
+  notify: restart pulse-agent
+
+- name: Create the state directory
+  ansible.builtin.file:
+    path: "{{ pulse_agent_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Look for the token
+  ansible.builtin.stat:
+    path: "{{ pulse_agent_state_dir }}/token"
+  register: _pulse_agent_token
+
+- name: Mint the token
+  ansible.builtin.import_tasks: token.yml
+  vars:
+    _api: http://127.0.0.1:{{ pulse_agent_server_port }}/api
+  when: not _pulse_agent_token.stat.exists
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: pulse-agent.service.j2
+    dest: /etc/systemd/system/pulse-agent.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart pulse-agent
+
+- name: Enable and start pulse-agent
+  ansible.builtin.systemd_service:
+    name: pulse-agent
+    enabled: true
+    state: started
+    daemon_reload: true

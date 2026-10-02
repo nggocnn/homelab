@@ -1,0 +1,14 @@
+---
+pulse_agent_version: "6.4.5"   # the server's
+pulse_agent_state_dir: /var/lib/pulse-agent
+
+# The server reported to, and the login that mints this host's token there.
+pulse_agent_server: "{{ groups['pulse'][0] }}"
+pulse_agent_server_port: 7655
+pulse_agent_url: "http://{{ hostvars[pulse_agent_server].ansible_host }}:{{ pulse_agent_server_port }}"
+pulse_agent_api_user: admin
+pulse_agent_api_password_file: "{{ playbook_dir }}/../pulse-password"
+
+# One token per host: report and read its own config, nothing else.
+pulse_agent_token_name: "agent-{{ inventory_hostname }}"
+pulse_agent_token_scopes: ["agent:report", "agent:config:read"]
