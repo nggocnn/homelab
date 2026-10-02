@@ -1,0 +1,31 @@
+[Unit]
+Description=Pulse agent
+Wants=network-online.target
+After=network-online.target
+
+# Root: smartctl and the sensors. Host telemetry only - the cluster is the server's, through
+# the API, and --enable-proxmox would mint a second API user from here. No remote commands
+# (off unless --enable-commands), no self-update.
+[Service]
+ExecStart=/usr/local/bin/pulse-agent \
+  --url {{ pulse_agent_url }} \
+  --token-file {{ pulse_agent_state_dir }}/token \
+  --state-dir {{ pulse_agent_state_dir }} \
+  --enable-proxmox=false \
+  --enable-docker=false \
+  --disable-auto-update
+Restart=always
+RestartSec=5
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

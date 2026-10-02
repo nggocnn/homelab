@@ -1,0 +1,58 @@
+---
+# On the server, as its admin. The secret is shown once, at creation: without the token file
+# there is nothing to recover, so an orphaned token is revoked and a fresh one minted.
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _pulse_agent_password: "{{ lookup('ansible.builtin.file', pulse_agent_api_password_file) | trim }}"
+  no_log: true
+
+- name: List the tokens
+  ansible.builtin.uri:
+    url: "{{ _api }}/security/tokens"
+    url_username: "{{ pulse_agent_api_user }}"
+    url_password: "{{ _pulse_agent_password }}"
+    force_basic_auth: true
+  delegate_to: "{{ pulse_agent_server }}"
+  register: _pulse_tokens
+  no_log: true
+
+- name: Revoke the orphaned token
+  ansible.builtin.uri:
+    url: "{{ _api }}/security/tokens/{{ item.id }}"
+    method: DELETE
+    url_username: "{{ pulse_agent_api_user }}"
+    url_password: "{{ _pulse_agent_password }}"
+    force_basic_auth: true
+    status_code: 204
+  delegate_to: "{{ pulse_agent_server }}"
+  loop: "{{ _pulse_tokens.json.tokens | default([], true) | selectattr('name', 'equalto', pulse_agent_token_name) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: true
+  no_log: true
+
+- name: Create the token
+  ansible.builtin.uri:
+    url: "{{ _api }}/security/tokens"
+    method: POST
+    url_username: "{{ pulse_agent_api_user }}"
+    url_password: "{{ _pulse_agent_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: { name: "{{ pulse_agent_token_name }}", scopes: "{{ pulse_agent_token_scopes }}" }
+    status_code: [200, 201]
+  delegate_to: "{{ pulse_agent_server }}"
+  register: _pulse_token_new
+  changed_when: true
+  no_log: true
+
+- name: Write the token
+  ansible.builtin.copy:
+    content: "{{ _pulse_token_new.json.token }}"
+    dest: "{{ pulse_agent_state_dir }}/token"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart pulse-agent

@@ -128,7 +128,7 @@
         name: "{{ item }}"
         state: stopped
         enabled: false
-      loop: [beszel-agent, node_exporter, process-exporter, alloy, keepalived]
+      loop: [beszel-agent, pulse-agent, node_exporter, process-exporter, alloy, keepalived]
       when: item ~ '.service' in ansible_facts.services
 
     - name: Remove alloy and keepalived
@@ -143,9 +143,12 @@
         state: absent
       loop:
         - /etc/systemd/system/beszel-agent.service
+        - /etc/systemd/system/pulse-agent.service
         - /etc/systemd/system/node_exporter.service
         - /etc/systemd/system/process-exporter.service
         - /usr/local/bin/beszel-agent
+        - /usr/local/bin/pulse-agent
+        - /var/lib/pulse-agent
         - /usr/local/bin/node_exporter
         - /usr/local/bin/process-exporter
         - /etc/process-exporter
