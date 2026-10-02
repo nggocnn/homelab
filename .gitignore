@@ -21,6 +21,7 @@ infra/ansible/blocked-sites
 infra/ansible/beszel-password
 infra/ansible/kuma-password
 infra/ansible/grafana-password
+infra/ansible/pulse-password
 infra/ansible/telegram-bot-token
 infra/ansible/telegram-chat-id
 

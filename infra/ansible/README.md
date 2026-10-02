@@ -44,9 +44,10 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
+| `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, token registered once) - no agents on the nodes, no notifications, telemetry off. Installed from the release tarball rather than the vendor's script, so nothing updates itself. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
 | `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so no redundant trio restarts together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
-| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, exporters, Alloy) and the `prometheus@pve` API user. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
+| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
 
 ```bash
 ssh-add -t 1h ~/.ssh/ca/user_ca ~/.ssh/ca/host_ca          # a run that signs asks for it
@@ -73,6 +74,8 @@ ansible-playbook playbooks/21-uptime-kuma.yml
 (umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)   # gitignored
 ansible-playbook playbooks/22-prometheus.yml
 ansible-playbook playbooks/23-loki.yml
+(umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)   # gitignored
+ansible-playbook playbooks/24-pulse.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
 
@@ -141,6 +144,7 @@ Three tools, split so none repeats another. Each alerts to Telegram on its own.
 | Prometheus, `monitor-01:9090`, Grafana on `:3000` | The cluster and its services: quorum, node and guest state, storage, backup coverage - plus CPU package power (Intel RAPL) and per-process history from the nodes, and Pi-hole's query stats. |
 | Uptime Kuma, `kuma-01:3001` | Whether an address answers, from outside: the two VIPs, the containers, the VMs, the tunnel. |
 | Loki, on `monitor-01`, read in Grafana | The journal of each node, labelled `host`, `unit` and `level`, kept 30 days. Alloy ships it - Promtail reached end of life in March 2026. |
+| Pulse, `pulse-01:7655` | On trial: nodes, guests, storage and backups in one view, from the Proxmox API alone. Alerts nowhere. |
 
 The node exporter runs with `--collector.disable-defaults --collector.rapl`, so it reports power
 and nothing else - the rest of the host belongs to Beszel.
