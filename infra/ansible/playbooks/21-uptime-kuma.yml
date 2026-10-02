@@ -3,10 +3,15 @@
 #
 #   (umask 077; read -rsp 'Uptime Kuma password: ' p && printf '%s' "$p" > kuma-password; unset p)
 #   ansible-playbook playbooks/21-uptime-kuma.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Uptime Kuma
   hosts: kuma
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - apt_packages
     - uptime_kuma
     - autokuma

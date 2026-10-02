@@ -2,16 +2,17 @@
 # --- connection -------------------------------------------------------------
 # nggocnn from cloud-init, key-only over SSH; sudo asks for the password in vm-password.
 ansible_user: nggocnn
-ansible_ssh_private_key_file: ~/.ssh/vm.nggocnn.internal
+ansible_ssh_private_key_file: "{{ ssh_controller_key }}"
 ansible_python_interpreter: /usr/bin/python3
 ansible_become: true
 ansible_become_password: "{{ lookup('ansible.builtin.file', vm_password_file, errors='ignore') | default('', true) }}"
 vm_password_file: "{{ inventory_dir }}/../vm-password" # inventory_dir, so ad-hoc -b finds it too
 
 # --- access -----------------------------------------------------------------
-# nggocnn's keys, applied by pve_vm at creation and by guest_user. Additive, never pruned.
+# nggocnn trusts the user CA and nothing else: seeded by cloud-init, kept exclusive by guest_ssh.
+ssh_principal: vm-nggocnn
 vm_authorized_keys:
-  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBs+0x3ZOqTIU++sMbz4geGFbeetwG7UQz3eVKBqLgxe vm.nggocnn.internal"
+  - "{{ ssh_user_ca_line }}"
 
 guest_ssh_config: vm.conf
 

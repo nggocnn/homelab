@@ -7,10 +7,15 @@
 #   (umask 077; mkpasswd -m bcrypt -R 10 > adguard-password.hash)
 #   (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 #   ansible-playbook playbooks/13-dns.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: DNS
   hosts: dns
   gather_facts: false
   roles:
+    - pve_lxc
+    - guest_ssh
     - apt_packages
     - adguard_home   # the upstream first, so pihole has somewhere to forward
     - pihole

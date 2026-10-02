@@ -2,6 +2,9 @@
 # Logs: journald on the nodes, shipped by Alloy to Loki beside Prometheus, read in Grafana.
 #
 #   ansible-playbook playbooks/23-loki.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
 - name: Loki
   hosts: monitor
   gather_facts: false
