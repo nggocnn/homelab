@@ -1,0 +1,49 @@
+---
+# apt dist-upgrade everywhere: the nodes, then every container and VM. One host at a time,
+# so the DNS, Tailscale and cloudflared trios never restart together.
+#
+# Nothing reboots unless asked: a node with a newer kernel installed is only reported.
+# upgrade_reboot=true reboots those nodes one by one, waiting for quorum - their guests go down with them.
+#
+#   ansible-playbook playbooks/90-upgrade.yml
+#   ansible-playbook playbooks/90-upgrade.yml -e upgrade_reboot=true
+#   ansible-playbook playbooks/90-upgrade.yml --limit pve
+#   ansible-playbook playbooks/90-upgrade.yml --limit 'dns:docker'
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Upgrade the nodes
+  hosts: pve
+  gather_facts: true   # reboot.yml compares against the running kernel
+  serial: 1
+  vars:
+    upgrade_reboot: false
+  tasks:
+    # Repositories first: a PVE upgrade can restore the enterprise entries.
+    - name: Repositories
+      ansible.builtin.include_role:
+        name: pve_host
+        tasks_from: repos.yml
+
+    - name: Upgrade packages
+      ansible.builtin.include_role:
+        name: pve_host
+        tasks_from: packages.yml
+      vars:
+        pve_do_dist_upgrade: true
+
+    - name: Reboot if pending
+      ansible.builtin.include_role:
+        name: pve_host
+        tasks_from: reboot.yml
+      vars:
+        pve_allow_reboot: "{{ upgrade_reboot }}"
+
+- name: Upgrade the guests
+  hosts: lxc:vm
+  gather_facts: false
+  serial: 1
+  roles:
+    - role: apt_packages
+      vars:
+        apt_upgrade: true
