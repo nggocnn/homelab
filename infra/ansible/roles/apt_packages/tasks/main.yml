@@ -5,6 +5,7 @@
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
+  changed_when: false # a fresher index is not a change to the host
 
 - name: Install packages
   ansible.builtin.apt:
