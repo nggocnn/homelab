@@ -59,7 +59,7 @@ ansible-playbook playbooks/02-images.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
-mkpasswd -m yescrypt > bastion-password.hash              # bastion user's password, gitignored
+(umask 077; mkpasswd -m yescrypt > bastion-password.hash)   # bastion user's password, gitignored
 ansible-playbook playbooks/12-bastion.yml
 (umask 077; mkpasswd -m bcrypt -R 10 > adguard-password.hash)   # both gitignored
 (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)

@@ -1,3 +1,4 @@
+---
 # kuma-01: probes the VIPs, the containers and the tunnel from outside, and serves a status page.
 # Monitors come from AutoKuma files; create the admin in the web UI first, with the password in kuma-password.
 #

@@ -1,9 +1,9 @@
 ---
-# bastion-01: the one way in over SSH. usser with a password (console, sudo) and a
+# bastion-01: the one way in over SSH. user with a password (console, sudo) and a
 # certificate (SSH), and a short-lived certificate of its own for the guests behind it.
 # Re-run to renew the certificates, or after adding a guest for its ~/.ssh/config alias.
 #
-#   mkpasswd -m yescrypt > bastion-password.hash
+#   (umask 077; mkpasswd -m yescrypt > bastion-password.hash)
 #   ssh-keygen -t ed25519 -f ~/.ssh/dev.nggocnn.internal # once, with a passphrase
 #   ansible-playbook playbooks/12-bastion.yml
 #   ansible-playbook playbooks/12-bastion.yml -e bastion_rotate=true              # new guest key

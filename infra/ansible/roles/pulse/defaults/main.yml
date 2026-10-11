@@ -12,7 +12,7 @@ pulse_password_file: "{{ playbook_dir }}/../pulse-password"
 # Usage telemetry to the vendor is on unless switched off.
 pulse_telemetry: false
 
-# The cluster, through the VIP: Pulse finds the members from there. No agent on the nodes.
+# The cluster, through the VIP: Pulse finds the members from there.
 pulse_pve_name: pve
 pulse_pve_host: "https://{{ pve_vip }}:8006"
 
