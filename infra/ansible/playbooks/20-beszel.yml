@@ -15,6 +15,7 @@
   roles:
     - pve_lxc
     - guest_ssh
+    - apt_packages
     - beszel_hub
 
 - name: Beszel agents
