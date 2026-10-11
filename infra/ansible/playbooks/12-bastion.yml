@@ -10,6 +10,9 @@
 - name: Controller certificate
   ansible.builtin.import_playbook: _ssh-cert.yml
 
+- name: Bastion node host key
+  ansible.builtin.import_playbook: _pct-remote.yml
+
 - name: Bastion
   hosts: bastion
   gather_facts: false

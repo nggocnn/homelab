@@ -1,0 +1,24 @@
+---
+# Imported by the playbooks that reach the bastion. It is managed with `pct exec` through
+# its node, over paramiko - which ignores @cert-authority lines, so the node's own key has
+# to be in known_hosts. Read over the OpenSSH connection, which the host certificate has
+# already verified.
+- name: Bastion node host key
+  hosts: bastion
+  gather_facts: false
+  tags: [always]
+  tasks:
+    - name: Read the host key of {{ lxc_node }}
+      ansible.builtin.command:
+        cmd: cat /etc/ssh/ssh_host_ed25519_key.pub
+      delegate_to: "{{ lxc_node }}"
+      register: _nodekey
+      changed_when: false
+      check_mode: false
+
+    - name: Add it to the controller's known_hosts
+      ansible.builtin.known_hosts:
+        name: "{{ ansible_paramiko_host }}"
+        key: "{{ ansible_paramiko_host }} {{ _nodekey.stdout | trim | regex_replace('^(\\S+ \\S+).*$', '\\1') }}"
+        state: present
+      delegate_to: localhost

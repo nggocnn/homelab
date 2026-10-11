@@ -7,6 +7,9 @@
 - name: Controller certificate
   ansible.builtin.import_playbook: _ssh-cert.yml
 
+- name: Bastion node host key
+  ansible.builtin.import_playbook: _pct-remote.yml
+
 - name: Nodes
   hosts: pve
   gather_facts: false
