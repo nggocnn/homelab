@@ -118,6 +118,7 @@
   until: _beszel_health.status == 200
   retries: 30
   delay: 2
+  check_mode: false
 
 - name: Configure users and alerts
   ansible.builtin.import_tasks: api.yml

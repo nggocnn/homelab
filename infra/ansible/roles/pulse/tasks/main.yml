@@ -89,6 +89,7 @@
   until: _pulse_health.status == 200
   retries: 30
   delay: 2
+  check_mode: false
 
 - name: Register the cluster
   ansible.builtin.import_tasks: pve.yml

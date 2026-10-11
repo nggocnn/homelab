@@ -25,12 +25,14 @@
     body: { identity: "{{ beszel_user_email }}", password: "{{ _beszel_password }}" }
   register: _auth
   no_log: true
+  check_mode: false # a login, nothing is written; uri is otherwise skipped under --check
 
 - name: Find the user
   ansible.builtin.uri:
     url: "{{ _api }}/collections/users/records?filter={{ ('email=\"' ~ beszel_user_email ~ '\"') | urlencode }}"
     headers: "{{ _headers }}"
   register: _users
+  check_mode: false
 
 - name: Keep the user an admin
   ansible.builtin.uri:
@@ -48,6 +50,7 @@
     url: "{{ _api }}/collections/user_settings/records?filter={{ ('user=\"' ~ _user.id ~ '\"') | urlencode }}"
     headers: "{{ _headers }}"
   register: _settings
+  check_mode: false
 
 - name: Create the notification settings
   ansible.builtin.uri:
@@ -71,7 +74,9 @@
     _current: "{{ _settings_created.json if _settings_created is changed else _settings.json['items'][0] }}"
     _desired: "{{ _current.settings | combine({'emails': [], 'webhooks': [_webhook]}) }}"
     _webhook: "telegram://{{ _telegram_token }}@telegram?chats={{ telegram_chat_id }}"
-  when: _current.settings != _desired
+  when:
+    - not ansible_check_mode # the record may only exist once the task above has really run
+    - _current.settings != _desired
   changed_when: true
   no_log: true
 
@@ -80,12 +85,14 @@
     url: "{{ _api }}/collections/systems/records?perPage=500"
     headers: "{{ _headers }}"
   register: _systems
+  check_mode: false
 
 - name: List the alerts
   ansible.builtin.uri:
     url: "{{ _api }}/collections/alerts/records?perPage=500&filter={{ ('user=\"' ~ _user.id ~ '\"') | urlencode }}"
     headers: "{{ _headers }}"
   register: _alerts
+  check_mode: false
 
 - name: Create alerts
   ansible.builtin.uri:

@@ -10,9 +10,12 @@
     force_basic_auth: true
   register: _pulse_nodes
   no_log: true
+  check_mode: false
 
 - name: Mint the API token and register
-  when: _pulse_nodes.json | default([], true) | selectattr('type', 'equalto', 'pve') | list | length == 0
+  when:
+    - not ansible_check_mode # the token is minted for real or not at all
+    - _pulse_nodes.json | default([], true) | selectattr('type', 'equalto', 'pve') | list | length == 0
   block:
     - name: List the API users
       ansible.builtin.command:
