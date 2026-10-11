@@ -1,6 +1,7 @@
 ---
 # apt dist-upgrade everywhere: the nodes, then every container and VM. One host at a time,
-# so the DNS, Tailscale and cloudflared trios never restart together.
+# so the DNS, Tailscale and cloudflared trios never restart together. A guest that fails
+# does not stop the others.
 #
 # Nothing reboots unless asked: a node with a newer kernel installed is only reported.
 # upgrade_reboot=true reboots those nodes one by one, waiting for quorum - their guests go down with them.
@@ -45,7 +46,7 @@
 - name: Upgrade the guests
   hosts: lxc:vm
   gather_facts: false
-  serial: 1
+  throttle: 1   # not serial: a batch of one that fails ends the play
   roles:
     - role: apt_packages
       vars:
