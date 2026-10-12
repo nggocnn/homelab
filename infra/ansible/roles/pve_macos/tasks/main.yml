@@ -1,0 +1,84 @@
+---
+# Create-only: a VMID that already exists anywhere in the cluster is left as it is.
+# Every task runs on the node. The VM is left stopped - the install is by hand, on the console.
+
+- name: List the cluster's guests
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/resources --type vm --output-format json
+  delegate_to: "{{ vm_node }}"
+  register: _guests
+  changed_when: false
+  check_mode: false
+
+- name: Find VMID {{ macos_vmid }}
+  ansible.builtin.set_fact:
+    _vm: "{{ _guests.stdout | from_json | selectattr('vmid', 'equalto', macos_vmid | int) | first | default({}) }}"
+
+- name: Assert VMID {{ macos_vmid }} is free or already {{ inventory_hostname }}
+  ansible.builtin.assert:
+    that: _vm | length == 0 or (_vm.type == 'qemu' and _vm.name == inventory_hostname)
+    fail_msg: "VMID {{ macos_vmid }} is taken by {{ _vm.type | default('') }} '{{ _vm.name | default('') }}'."
+    quiet: true
+
+- name: Assert the core count is a power of two
+  ansible.builtin.assert:
+    that: macos_cores | int in [1, 2, 4, 8, 16, 32, 64]
+    fail_msg: "macos_cores is {{ macos_cores }}; macOS needs a power of two."
+    quiet: true
+
+- name: Create {{ inventory_hostname }} on {{ vm_node }}
+  when: _vm | length == 0
+  delegate_to: "{{ vm_node }}"
+  block:
+    - name: Resolve the ISO paths
+      ansible.builtin.command:
+        cmd: pvesm path {{ (macos_iso_storage ~ ':iso/' ~ item) | quote }}
+      loop:
+        - "{{ macos_opencore_iso }}"
+        - "{{ macos_recovery_iso }}"
+      register: _iso_paths
+      changed_when: false
+      check_mode: false
+
+    - name: Stat the ISOs
+      ansible.builtin.stat:
+        path: "{{ item.stdout }}"
+        get_checksum: false
+      loop: "{{ _iso_paths.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      register: _isos
+
+    - name: Assert both ISOs are on {{ vm_node }}
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: "{{ item.item.item }} is not on {{ vm_node }}. Add it to pve_isos and run 02-images.yml."
+        quiet: true
+      loop: "{{ _isos.results }}"
+      loop_control:
+        label: "{{ item.item.item }}"
+
+    # ostype l26 and no Secure Boot keys are what the OpenCore ISO expects. Both ISOs stay media=cdrom.
+    - name: Create the VM
+      ansible.builtin.command:
+        cmd: >-
+          qm create {{ macos_vmid }}
+          --name {{ inventory_hostname }}
+          --ostype l26
+          --machine q35
+          --bios ovmf
+          --efidisk0 {{ macos_storage }}:1,efitype=4m,pre-enrolled-keys=0
+          --cpu {{ macos_cpu }}
+          --cores {{ macos_cores }}
+          --memory {{ macos_memory_mb }}
+          --balloon 0
+          --virtio0 {{ macos_storage }}:{{ macos_disk_gb }},discard=on,iothread=1
+          --ide2 {{ macos_iso_storage }}:iso/{{ macos_opencore_iso }},media=cdrom
+          --ide0 {{ macos_iso_storage }}:iso/{{ macos_recovery_iso }},media=cdrom
+          --boot order=ide2;virtio0
+          --net0 virtio={{ macos_hwaddr }},bridge={{ macos_bridge }}
+          --agent enabled=1
+          --tablet 0
+          --args {{ macos_args | quote }}
+          {% if macos_pool %}--pool {{ macos_pool }}{% endif %}
+          --onboot 0

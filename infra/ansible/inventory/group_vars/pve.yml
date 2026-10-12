@@ -55,7 +55,13 @@ pve_lxc_templates:
   # - name: template.tar.zst
   #   src: <local_template_path>
 
-pve_isos: []
+pve_isos:
+  - name: LongQT-OpenCore-v0.7.iso   # the macOS VM's bootloader
+    url: https://github.com/LongQT-sea/OpenCore-ISO/releases/download/v0.7/LongQT-OpenCore-v0.7.iso
+    checksum: sha256:287328995d4198f1b05166f087d85bf7ef66bedafe150d17ad112ac8de60051d
+    nodes: [pve-02]
+  # macOS-Tahoe-recovery.iso is not listed: it is released as a zip, so it is unpacked on pve-02
+  # by hand - see "macOS" in the README. sha256 01c80bc6570bc7e727d93bf0619a279d8c2c8bebae5761e556c3c530f1bec4e8
   # - name: ubuntu-24.04.4-live-server-amd64.iso
   #   url: https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
   #   # src: <local_iso_path>

@@ -1,0 +1,7 @@
+---
+# Sizing and device defaults: roles/pve_macos/defaults/main.yml.
+# Never connected to: Ansible creates the VM from its node and stops there.
+macos_pool: access
+macos_cores: 8
+macos_memory_mb: 16384   # docker-01 (8 GB) does not fit beside it on a 24 GB node
+macos_disk_gb: 96

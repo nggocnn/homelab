@@ -46,6 +46,7 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
 | `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
+| `playbooks/31-macos.yml` | `macos-01`: a macOS Tahoe VM on `pve-02`, booted by the OpenCore ISO (create-only, left stopped). No cloud-init, no agents and nothing over SSH - the install is by hand, see [macOS](#macos). Then re-run 13 for its DNS record. |
 | `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so no redundant trio restarts together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
 | `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
 
@@ -78,6 +79,7 @@ ansible-playbook playbooks/23-loki.yml
 ansible-playbook playbooks/24-pulse.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
+ansible-playbook playbooks/31-macos.yml                  # after the recovery ISO is in pve_isos, see macOS
 
 ansible-playbook playbooks/90-upgrade.yml                # any time: upgrade every node and guest
 ansible-playbook playbooks/99-teardown.yml               # back to after 01, asks first
@@ -273,6 +275,52 @@ ansible tailscale-03 -m shell -a 'nohup sh -c "sleep 3; tailscale set --advertis
 # ... reboot pve-03 ...
 ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertises; approval persists
 ```
+
+---
+
+### macOS
+
+`macos-01` is macOS Tahoe 26, the last release for Intel, on `pve-02`. The nodes are Coffee Lake
+with UHD 630, the platform of the last Intel Macs, so the guest needs no CPU patches.
+Apple licenses macOS for Apple hardware only.
+
+Ansible creates the VM and stops. The rest is by hand, once:
+
+1. **Recovery ISO.** It has no download URL of its own. Fork [macos-iso-builder](https://github.com/LongQT-sea/macos-iso-builder),
+   star the original (the build is skipped otherwise), and run its *Recovery ISO* workflow for Tahoe with a release tag.
+   The web form has dropped the tag, `gh` does not. Then unpack the release on the node - `pve_isos` takes no zip,
+   and 2.6 GB pushed from the controller is slow - and run `31-macos.yml`:
+
+   ```bash
+   gh workflow run build-recovery.yml -R <user>/macos-iso-builder -f macos_version=Tahoe -f release_tag=tahoe-recovery
+   # on pve-02
+   cd "$(mktemp -d /var/lib/vz/macos-iso.XXXXXX)"
+   curl -fLO https://github.com/<user>/macos-iso-builder/releases/download/tahoe-recovery/macOS_Tahoe_Recovery.iso.zip
+   python3 -m zipfile -e macOS_Tahoe_Recovery.iso.zip .
+   install -m 0644 macOS_Tahoe_Recovery.iso /var/lib/vz/template/iso/macOS-Tahoe-recovery.iso
+   ```
+
+2. **Install.** Start the VM and open its console. Boot the installer from the OpenCore menu, erase the
+   VirtIO disk as APFS in Disk Utility, and install. The image is fetched from Apple, and the VM restarts several times.
+   Skip the Apple ID sign-in.
+3. **Address.** Network settings, manual: `10.10.10.130/24`, router `pve_gateway`, DNS `dns_vip`.
+4. **Bootloader onto the disk.** On the desktop, `LongQT-OpenCore/Mount_EFI.command`, then copy
+   `EFI_RELEASE/EFI` to the mounted partition. Shut down and detach both ISOs:
+
+   ```bash
+   qm set 130 --delete ide0,ide2 --boot order=virtio0
+   ```
+
+5. **Access.** Turn on Screen Sharing and Remote Login in Sharing. Snapshot the VM here.
+6. **Apple ID**, only after generating a serial of its own: GenSMBIOS for a model Tahoe runs on
+   (`iMac20,1`), written to `config.plist` on the EFI partition, plus `VMHide.kext`. The serial stays out of this repository.
+
+The VM that stops at the Apple logo: `echo 1 > /sys/module/kvm/parameters/ignore_msrs` on `pve-02` and start
+it again. If that is what it takes, it belongs in `pve_host`.
+
+Without a GPU the desktop is drawn in software. Passing the node's UHD 630 through is the next step, and
+not done yet: it changes the machine type to `pc`, takes the node's own console away while the VM runs,
+and needs a monitor or a dummy plug on a DisplayPort.
 
 ---
 

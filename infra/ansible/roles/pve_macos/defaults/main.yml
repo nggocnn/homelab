@@ -1,0 +1,26 @@
+---
+# Per host in inventory: ansible_host and vm_node. VMID = last octet of ansible_host.
+# macOS has no cloud-init: the address is set by hand in the guest, to ansible_host.
+macos_vmid: "{{ hostvars[inventory_hostname].ansible_host.split('.')[-1] | int }}"
+
+# Proxmox OUI + VMID, so a rebuilt VM keeps its MAC.
+macos_hwaddr: "{{ 'BC:24:11:00:%02X:%02X' | format(macos_vmid | int // 256, macos_vmid | int % 256) }}"
+
+# Both from pve_isos, on vm_node. OpenCore boots the installer and stays attached until
+# its EFI folder has been copied to the disk; the recovery image goes after the install.
+macos_iso_storage: local
+macos_opencore_iso: LongQT-OpenCore-v0.7.iso
+macos_recovery_iso: macOS-Tahoe-recovery.iso
+
+macos_storage: local-lvm
+macos_disk_gb: 96
+macos_cores: 4          # a power of two, macOS does not boot on other counts
+macos_memory_mb: 8192   # never ballooned
+macos_bridge: vmbr0
+macos_pool: ""
+
+# A named model, not `host`: macOS runs markedly slower on host passthrough.
+macos_cpu: Skylake-Client-v4
+
+# Tahoe freezes the cursor on the USB tablet, so that is off and this takes its place.
+macos_args: -device virtio-tablet

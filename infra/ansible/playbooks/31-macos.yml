@@ -1,0 +1,13 @@
+---
+# macos-01: a macOS Tahoe VM booted by OpenCore, created and left stopped.
+# Run 02-images.yml first for the two ISOs. The install is by hand - see "macOS" in the README.
+#
+#   ansible-playbook playbooks/31-macos.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: macOS VMs
+  hosts: macos
+  gather_facts: false
+  roles:
+    - pve_macos
