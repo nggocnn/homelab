@@ -1,6 +1,6 @@
 ---
-# tailscale-01..03: created, then Tailscale installed and the subnet advertised. Log in by hand on each router, then re-run.
-# One router carries the subnet at a time; Tailscale fails over to another if it goes away.
+# tailscale-01: created, then Tailscale installed and the subnet advertised. Log in by hand on each router, then re-run.
+# One router carries the subnet at a time; with a second one, Tailscale fails over to it if the first goes away.
 #
 #   tailscale up          # routes and accept-dns are reconciled by the role afterwards
 #

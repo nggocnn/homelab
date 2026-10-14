@@ -55,7 +55,7 @@
         name: pve_cluster
         tasks_from: pools
 
-# One address for the web UI and the API, floating across the three nodes.
+# One address for the web UI and the API, floating across the nodes.
 #
 # Proxmox has no cluster management address of its own. It does not need one to reach
 # the whole cluster: pveproxy forwards API calls, the node shell and noVNC to whichever

@@ -1,5 +1,5 @@
 ---
-# cloudflared-01..03: created, then cloudflared installed. The tunnel token is added by hand.
+# cloudflared-01: created, then cloudflared installed. The tunnel token is added by hand.
 #
 #   ansible-playbook playbooks/10-cloudflared.yml
 #   ansible-playbook playbooks/10-cloudflared.yml -e apt_upgrade=true

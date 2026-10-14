@@ -19,7 +19,7 @@ sudo apt install -y ansible               # 13.1.0: ansible-core 2.20.1 + bundle
 sudo apt install -y python3-paramiko      # the bastion's proxmox_pct_remote connection needs it
 cd infra/ansible
 ansible-galaxy collection install -r requirements.yml   # into ./collections (gitignored)
-ansible pve -m ping                       # expect 3 × SUCCESS
+ansible pve -m ping                       # expect SUCCESS from every node
 ```
 
 `requirements.yml` pins `ansible.posix >= 2.2.2`. The apt package's 2.1.0 prints a `to_native` deprecation warning.
@@ -33,12 +33,12 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | Playbook | What it does |
 | --- | --- |
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent - a second run must report `changed=0`. |
-| `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the three nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
+| `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates`, `pve_isos` and `pve_cloud_images` (to `local:import`) on every node's `local` storage, or only on an entry's `nodes` - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
-| `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01..03`. Tunnel token added by hand. |
-| `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01..03`, each advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve each device's route in the admin console). Tailscale routes through one of them at a time and fails over to another. |
+| `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01`. Tunnel token added by hand. |
+| `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01`, advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). Add a second router and Tailscale routes through one at a time and fails over to the other. |
 | `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
-| `playbooks/13-dns.yml` | `dns-01..03`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the three. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
+| `playbooks/13-dns.yml` | `dns-01`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the `dns` group. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers created so far (`pct set`) at `lxc_resolvers`. Until 13 has run, creation uses the gateway; containers created later start on `dns_vip`. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node and VM (per-container stats on Docker hosts), and alerts to Telegram. Host hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
@@ -46,7 +46,7 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
 | `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
-| `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so no redundant trio restarts together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
+| `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so redundant members never restart together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
 | `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
 
 ```bash
@@ -151,8 +151,9 @@ and nothing else - the rest of the host belongs to Beszel.
 
 ### Cluster VIP
 
-`10.10.10.10` floats across the three nodes: `https://pve.nggocnn.internal:8006` reaches the
-cluster whichever node is up. Proxmox has no management address of its own and needs none to be
+`10.10.10.10` floats across the nodes: `https://pve.nggocnn.internal:8006` reaches the
+cluster whichever node is up. With `pve-01` the only node, the VIP stays on it and goes down with
+it. It still earns its place: the address and the certificate don't change when a node joins. Proxmox has no management address of its own and needs none to be
 cluster-wide - `pveproxy` forwards API calls, the node shell and noVNC to whichever node owns the
 resource, and the session cookie is signed cluster-wide, so a session survives the address moving.
 
@@ -171,22 +172,8 @@ add one. Trust the cluster CA in the browser and the warning goes for good:
 ansible pve-01 -m fetch -a 'src=/etc/pve/pve-root-ca.pem dest=~/ flat=yes'
 ```
 
-Measured at 5/s against `https://10.10.10.10:8006/`, reading `NodeName` out of the response so
-each sample records which node answered:
-
-| Event | Outage | Path |
-| --- | --- | --- |
-| reboot the holder | <= 1.5 s | keepalived shuts down cleanly and adverts priority 0, so the backup promotes at once rather than waiting out three missed adverts |
-| `systemctl stop pveproxy`, node up | 6.4 s | check fails twice, priority drops 150 to 90, election runs |
-| `systemctl stop corosync`, node up | none | `chk_quorum` fails and the VIP leaves, while pveproxy on the old holder serves right up to the handover |
-
-One dropped sample is 1.5 s at this rate, and the baseline produced one with nothing happening, so
-the reboot row is at the probe's floor, not a measurement of it. Preempting back cost nothing
-measurable in all three. Exactly one node answered at every sample - no split brain.
-
-The third row is the case a service check alone misses: `pveproxy` never stopped answering on the
-partitioned node, and without `chk_quorum` the VIP would have stayed on a node whose `/etc/pve` had
-gone read-only.
+The failover times measured with three nodes (a reboot under 1.5 s, a stopped `pveproxy` 6.4 s,
+a stopped corosync no outage) are in this file at `c8b8cf9` on `main`.
 
 ### DNS
 
@@ -199,7 +186,7 @@ order linear. `lxc_nameserver` is the creation value, `lxc_resolvers` the steady
 
 The `dns` group stays on the gateway - it is the service itself - and `tailscale` and
 `cloudflared` keep the gateway behind the VIP, so an access path can still reach its control
-plane while the pair is down.
+plane while the resolvers are down.
 
 ```bash
 ansible-playbook playbooks/14-dns-clients.yml   # nodes now, containers on their next start
@@ -207,41 +194,20 @@ ansible-playbook playbooks/14-dns-clients.yml   # nodes now, containers on their
 
 ### DNS failover
 
-Measured with `keepalived_check_interval: 2`. Probe the DNS VIP from a node at 5/s - exit status,
-not output, because `dig +short` prints `communications error` to stdout and a non-empty
-result is not a success:
+With `dns-01` the only member, it holds `dns_vip` for good, and a dead resolver is an outage
+rather than a failover. The checks and weights are set for when a second member joins. To
+probe the DNS VIP from a node at 5/s, read the exit status, not the output, because
+`dig +short` prints `communications error` to stdout and a non-empty result is not a success:
 
 ```bash
 while :; do dig +time=1 +tries=1 @10.10.10.51 A pve-01.nggocnn.internal >/dev/null 2>&1 \
   && echo "$(date +%s.%N) OK" || echo "$(date +%s.%N) FAIL"; sleep 0.2; done
 ```
 
-| Event | Outage | Path |
-| --- | --- | --- |
-| `pct stop` the holder | 2.5 s | keepalived exits, the backup promotes on the missing advert |
-| `systemctl stop pihole-FTL`, container still up | 5.9 s | check fails twice, priority drops, election runs |
-
-Stopping each container in turn walks the VIP down the priorities, `dns-01` (150) to `dns-02`
-(100) to `dns-03` (50), and starting them again walks it back up by preemption. Exactly one
-holder at every sample - no split brain.
-
-The second row is the case plain VRRP misses: the container is healthy, only the resolver is
-gone, so nothing but the tracked check notices.
-
-```
-Script `chk_pihole` now returning 9
-VRRP_Script(chk_pihole) failed (exited with status 9)
-(VI_1) Changing effective priority from 150 to 90
-(VI_1) Master received advert from 10.10.10.108 with higher priority 100, ours 90
-(VI_1) Entering BACKUP STATE
-```
-
-90, not 100: `keepalived_check_weight` (-60) has to exceed the 50 gap between neighbouring
-priorities. At -50 a failed check only levels the holder with its peer and VRRP breaks the
-tie on the higher address, not on health.
-
-The same test at `keepalived_check_interval: 5` measured 12.1 s. The floor is the election
-itself, which `advert_int` governs, not the checks.
+`keepalived_check_weight` is -60 because it has to exceed the 50 gap between neighbouring
+priorities. At -50 a failed check only levels the holder with its peer, and VRRP breaks the
+tie on the higher address, not on health. The three-member measurements (2.5 s for a stopped
+container, 5.9 s for a stopped `pihole-FTL`) are in this file at `c8b8cf9` on `main`.
 
 Optional switches:
 
@@ -250,7 +216,7 @@ Optional switches:
 -e pve_do_dist_upgrade=true    # apt full-upgrade as part of the run
 -e pve_images_throttle=1       # 02-images: one node transferring at a time
 --tags nic,repos               # one concern at a time
---limit pve-02                 # one node
+--limit pve-01                 # one node
 ```
 
 `TS_API_KEY` (a Tailscale API token, read from the environment and never written to disk)
@@ -262,17 +228,10 @@ approve in the admin console. Unset, approve by hand.
 -e tailscale_approve_routes=false       # advertise only, approve by hand
 ```
 
-Drain a router before rebooting its node: withdrawing the route hands over with **no packet
-loss**, where losing the container costs ~17 s either way (measured, hard stop and graceful
-shutdown alike - tailscaled exiting is not a logout, so the coordination server waits for
-the keepalive to lapse).
-
-```bash
-# Detached: the command reaches the router through the route it is withdrawing.
-ansible tailscale-03 -m shell -a 'nohup sh -c "sleep 3; tailscale set --advertise-routes=" >/dev/null 2>&1 &'
-# ... reboot pve-03 ...
-ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertises; approval persists
-```
+With one router, rebooting `pve-01` takes the route down until `tailscale-01` is back. Once
+there is a second router, drain the first before a reboot. Withdrawing the route hands over
+with no packet loss, where losing the container costs about 17 s. The procedure is in this
+file at `c8b8cf9` on `main`.
 
 ---
 
@@ -285,7 +244,7 @@ ansible-playbook playbooks/11-tailscale.yml --limit tailscale-03   # re-advertis
 | `nic` | `nic.yml` | `/usr/local/sbin/pve-nic-fix`, unit and udev rule. Interfaces are matched **by driver**, never by name. Asserts TSO/GSO/GRO `off` and EEE disabled afterwards. |
 | `nag` | `nag.yml` | The `orig_checked_command` patch plus the APT `Post-Invoke` hook that reapplies it after every upgrade. |
 | `webtitle` | `webtitle.yml` | The browser tab titled `pve_web_title` instead of the node name, with the same APT `Post-Invoke` hook as the nag. Off when `pve_web_title` is empty. |
-| `hosts` | `hostsfile.yml` | `/etc/hosts` templated with all three nodes; asserts `hostname -f`. |
+| `hosts` | `hostsfile.yml` | `/etc/hosts` templated with every node; asserts `hostname -f`. |
 | `time` | `time.yml` | chrony running, and asserts the clock is actually synchronised. |
 | `ssh` | `ssh.yml` | Root's authorised keys - the user CA and the break-glass key, additive - key-only login, the revoked keys and a host certificate, installed through `sshd -t` validation protecting from a malformed drop-in. |
 | `tuning` | `tuning.yml` | `vm.swappiness=10`, journal capped at 1 G. |
@@ -312,7 +271,7 @@ node's `/etc/pve`, a node's name is immutable once it is a member.
    joins with `--use_ssh`. Concurrent joins against one primary are unsafe.
 
 3. **Verification**, asked of *every* node, not just the primary: root SSH to every node the
-   way Proxmox connects (a node missing from `/etc/pve` is registered with `pvecm updatecerts` first), quorate, three members,
+   way Proxmox connects (a node missing from `/etc/pve` is registered with `pvecm updatecerts` first), quorate, every inventory node a member,
    the right cluster name, and `/etc/pve/nodes` matching the inventory. A node can believe
    it is a member while the rest of the cluster disagrees; only asking all of them catches
    that.

@@ -92,7 +92,7 @@
           subjectAltName = {{ pve_vip_cert_sans | join(',') }}
 
     # A random serial, never -CAcreateserial: the serial file would land in the
-    # replicated /etc/pve/priv, where three nodes signing at once would race on it.
+    # replicated /etc/pve/priv, where nodes signing at once would race on it.
     - name: Sign it with the cluster CA
       ansible.builtin.shell:
         cmd: >-

@@ -1,5 +1,5 @@
 ---
-# Three identical resolvers: Pi-hole on :53 facing clients, AdGuard on 127.0.0.1:5353 as its
+# Identical resolvers: Pi-hole on :53 facing clients, AdGuard on 127.0.0.1:5353 as its
 # upstream doing DNS-over-TLS, and keepalived floating dns_vip across them.
 #
 # Config comes from here, not from the two web UIs - a UI change is overwritten on the next run.

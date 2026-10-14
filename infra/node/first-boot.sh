@@ -17,7 +17,7 @@ DO_REPOS=1            # switch enterprise -> no-subscription, kill the apt error
 DO_UPGRADE=1          # apt full-upgrade on first boot
 DO_PACKAGES=1         # ethtool, lm-sensors, intel-microcode, etc.
 DO_SSH_HARDEN=1       # root login by key only (needs root-ssh-keys in answer.toml)
-DO_HOSTS=1            # static /etc/hosts entries for all three nodes
+DO_HOSTS=1            # static /etc/hosts entries for the cluster nodes
 DO_TUNING=1           # swappiness, journal cap
 DO_IOMMU=1            # PCIe passthrough ready; harmless if unused
 DO_NO_NAG=1           # suppress the "No valid subscription" dialog in the web UI
@@ -29,8 +29,6 @@ REPO_HOST=sg.cdn.proxmox.com
 # Your cluster - used by DO_HOSTS
 declare -A NODES=(
   [pve-01]=10.10.10.11
-  [pve-02]=10.10.10.12
-  [pve-03]=10.10.10.13
 )
 DOMAIN="nggocnn.internal"
 

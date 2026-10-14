@@ -2,10 +2,13 @@
 
 ## Target configuration
 
-| | pve-01 | pve-02 | pve-03 |
-| --- | --- | --- | --- |
-| FQDN | `pve-01.nggocnn.internal` | `pve-02.nggocnn.internal` | `pve-03.nggocnn.internal` |
-| IP | `10.10.10.11/24` | `10.10.10.12/24` | `10.10.10.13/24` |
+| | pve-01 |
+| --- | --- |
+| FQDN | `pve-01.nggocnn.internal` |
+| IP | `10.10.10.11/24` |
+
+A new node takes the next name and address (`pve-02`, `10.10.10.12`): add it to `n` in steps 2
+and 3, to `NODES` in `first-boot.sh` and to the `pve` group in the Ansible inventory.
 
 **`.internal` for node identity:** ICANN permanently reserved it from root-zone
 delegation, so it can never collide and doesn't depend on renewing a domain name registration.
@@ -30,9 +33,9 @@ sed -n "/^root-ssh-keys/,/]/p" answer.toml | grep -o "'.*'" | tr -d "'" | ssh-ke
 ```
 
 With `DO_SSH_HARDEN=1` there is no password fallback over SSH.
-A wrong key means three nodes reachable only from the physical console.
+A wrong key means a node reachable only from the physical console.
 
-**BIOS on all three machines**:
+**BIOS on every machine**:
 
 | Setting | Value | Why |
 | --- | --- | --- |
@@ -76,7 +79,7 @@ wget https://enterprise.proxmox.com/iso/proxmox-ve_9.2-1.iso -O proxmox-ve_9.2-1
 
 ---
 
-## Step 2 - Generate three answer files
+## Step 2 - Generate the answer files
 
 Generate the root password hash with `mkpasswd` - from the `whois` package.
 
@@ -86,14 +89,14 @@ mkpasswd -m yescrypt > root-password.hash
 chmod 600 root-password.hash
 ```
 
-Now derive the three per-node files. `answer.toml` and `root-password.hash` are the only
+Now derive one file per node. `answer.toml` and `root-password.hash` are the only
 inputs; nothing else is hand-edited.
 
 ```bash
 rm -f answer-*.toml
 
 HASH=$(cat root-password.hash)
-for n in 01 02 03; do
+for n in 01; do
   sed -e "s|^fqdn = .*|fqdn = \"pve-$n.nggocnn.internal\"|" \
       -e "s|^cidr = .*|cidr = \"10.10.10.$((10#$n + 10))/24\"|" \
       -e "s|^root-password-hashed = .*|root-password-hashed = \"$HASH\"|" \
@@ -104,16 +107,16 @@ done
 grep -H '^fqdn\|^cidr' answer-0*.toml
 ```
 
-Expect `.11/.12/.13` against `pve-01/02/03.nggocnn.internal`.
+Expect `.11` against `pve-01.nggocnn.internal`.
 
 ---
 
-## Step 3 - Build three ISOs
+## Step 3 - Build the ISOs
 
 ```bash
 rm -f pve-*.iso         # cleanup before build
 
-for n in 01 02 03; do
+for n in 01; do
   proxmox-auto-install-assistant validate-answer answer-$n.toml || break
   proxmox-auto-install-assistant prepare-iso proxmox-ve_9.2-1.iso \
     --fetch-from iso \
@@ -122,7 +125,7 @@ for n in 01 02 03; do
     --output pve-$n.iso
 done
 
-for n in 01 02 03; do proxmox-auto-install-assistant inspect-iso pve-$n.iso; done
+for n in 01; do proxmox-auto-install-assistant inspect-iso pve-$n.iso; done
 ```
 
 Expect fetch mode `iso` **and** an answer file listed.

@@ -1,6 +1,6 @@
 ---
 # intel_pstate's "powersave" is a ramp policy, not a frequency cap - the CPU
-# still reaches full turbo under load. On three always-on boxes that idle most
+# still reaches full turbo under load. On an always-on box that idles most
 # of the day it is the free half of the power bill. The EPP hint sets how eagerly it ramps.
 - name: Install the CPU governor unit
   ansible.builtin.copy:

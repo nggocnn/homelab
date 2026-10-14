@@ -351,7 +351,7 @@
         "justifyMode": "center",
         "wideLayout": true
       },
-      "description": "All three nodes, Intel RAPL. The CPU package only, not the wall.",
+      "description": "Every node, Intel RAPL. The CPU package only, not the wall.",
       "id": 6,
       "gridPos": {
         "x": 20,

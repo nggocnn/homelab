@@ -1,6 +1,6 @@
 ---
 # apt dist-upgrade everywhere: the nodes, then every container and VM. One host at a time,
-# so the DNS, Tailscale and cloudflared trios never restart together. A guest that fails
+# so redundant DNS, Tailscale and cloudflared members never restart together. A guest that fails
 # does not stop the others.
 #
 # Nothing reboots unless asked: a node with a newer kernel installed is only reported.

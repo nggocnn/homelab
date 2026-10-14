@@ -775,5 +775,5 @@
   "annotations": {
     "list": []
   },
-  "description": "Pi-hole on dns-01..03. Counts cover the last 24 h, as Pi-hole reports them."
+  "description": "Pi-hole on the dns group. Counts cover the last 24 h, as Pi-hole reports them."
 }

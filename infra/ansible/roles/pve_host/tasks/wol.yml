@@ -1,7 +1,7 @@
 ---
 # Wake-on-LAN, so a node that is off can be started from a peer:
 #
-#   pvenode wakeonlan pve-02
+#   pvenode wakeonlan pve-01
 #
 # Two halves, and both are needed: the NIC has to be armed (`wol g`) and the
 # node's MAC has to be registered in /etc/pve/nodes/<node>/config, which is

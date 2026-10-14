@@ -1,6 +1,7 @@
 # homelab
 
-A 3-node Proxmox VE cluster, built unattended from three USB sticks, plus first boot script.
+A single-node Proxmox VE cluster, built unattended from a USB stick, plus first boot script.
+The node is the one member of cluster `pve`, so adding a node later is a join, not a rebuild.
 
 | Directory | What it does |
 | --- | --- |
