@@ -1,0 +1,12 @@
+---
+# A one-off setup key from the NetBird dashboard, ephemeral off. Read on the controller from a
+# gitignored file and used only for the first login; the peer keeps its own identity after that.
+netbird_setup_key_file: "{{ playbook_dir }}/../netbird-setup-key"
+netbird_setup_key: "{{ lookup('ansible.builtin.file', netbird_setup_key_file, errors='ignore') | default('', true) | trim }}"
+
+# Passed to the first `netbird up`, then kept in the peer's config.
+# --disable-dns: resolv.conf stays with lxc_resolvers, so no NetBird nameserver can make a
+# router depend on a guest for DNS. --disable-client-routes: a router doesn't route through other routers.
+netbird_up_flags:
+  - --disable-dns
+  - --disable-client-routes

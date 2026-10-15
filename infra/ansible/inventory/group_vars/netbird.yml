@@ -1,0 +1,16 @@
+---
+# The edge: out of the bastion certificate's reach.
+ssh_principal: edge-root
+
+lxc_devices:
+  - /dev/net/tun
+
+# SLAAC from the router's RA: a peer with IPv6 can reach this one directly,
+# where IPv4 behind CGNAT falls back to NetBird's relays.
+lxc_ip6: auto
+
+# The VIP first, the gateway behind it. This is an access path: if the resolvers
+# are down and the container restarts, it still has to resolve its control plane to
+# reconnect. Filtering is not the point for these hostnames.
+lxc_resolvers: "{{ dns_vip }} {{ pve_gateway }}"
+lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml

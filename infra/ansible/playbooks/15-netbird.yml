@@ -1,0 +1,20 @@
+---
+# netbird-01: created, then NetBird installed and logged in to NetBird Cloud with a setup key.
+# Beside Tailscale, not instead of it. The subnet route, access policy and DNS live in the
+# NetBird dashboard: Networks -> resource pve_subnet_cidr -> routing peer netbird-01.
+#
+#   (umask 077; read -rsp 'NetBird setup key: ' k && printf '%s' "$k" > netbird-setup-key; unset k)
+#   ansible-playbook playbooks/15-netbird.yml
+#
+# Without the file the role stops before login: `netbird up --setup-key <key>` by hand, then re-run.
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: NetBird
+  hosts: netbird
+  gather_facts: false
+  roles:
+    - pve_lxc
+    - guest_ssh
+    - apt_packages
+    - netbird

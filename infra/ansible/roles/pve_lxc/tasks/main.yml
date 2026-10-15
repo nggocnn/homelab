@@ -40,8 +40,8 @@
           --cores {{ lxc_cores }}
           --memory {{ lxc_memory_mb }}
           --rootfs {{ lxc_storage }}:{{ lxc_disk_gb }}
-          --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }}/{{ lxc_prefix }},gw={{ lxc_gateway }},hwaddr={{ lxc_hwaddr }}
-          --nameserver {{ lxc_nameserver }}
+          --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }}/{{ lxc_prefix }},gw={{ lxc_gateway }},hwaddr={{ lxc_hwaddr }}{% if lxc_ip6 %},ip6={{ lxc_ip6 }}{% endif %}
+          --nameserver '{{ lxc_nameserver }}'
           {% if lxc_pool %}--pool {{ lxc_pool }}{% endif %}
           {% for dev in lxc_devices %}--dev{{ loop.index0 }} {{ dev }} {% endfor %}
           --ssh-public-keys /tmp/lxc-{{ lxc_vmid }}.pub
