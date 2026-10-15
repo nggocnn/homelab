@@ -40,6 +40,7 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
 | `playbooks/13-dns.yml` | `dns-01`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the `dns` group. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers created so far (`pct set`) at `lxc_resolvers`. Until 13 has run, creation uses the gateway; containers created later start on `dns_vip`. |
+| `playbooks/15-netbird.yml` | `apt_packages`, then NetBird on `netbird-01`, logged in to NetBird Cloud with the setup key in `netbird-setup-key`, as a trial beside Tailscale. The container also takes an IPv6 address (SLAAC), so a peer with IPv6 connects directly instead of through NetBird's relays. The subnet route, the access policy and DNS are set in the NetBird dashboard: Networks → resource `pve_subnet_cidr` → routing peer `netbird-01`. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node and VM (per-container stats on Docker hosts), and alerts to Telegram. Host hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
@@ -65,6 +66,8 @@ ansible-playbook playbooks/12-bastion.yml
 (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 ansible-playbook playbooks/13-dns.yml
 ansible-playbook playbooks/14-dns-clients.yml
+(umask 077; read -rsp 'NetBird setup key: ' k && printf '%s' "$k" > netbird-setup-key; unset k)   # one-off, gitignored
+ansible-playbook playbooks/15-netbird.yml
 (umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)   # both gitignored
 (umask 077; read -rsp 'Telegram bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
 read -rp 'Telegram chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c   # message the bot, then .../getUpdates
@@ -101,7 +104,7 @@ A host accepts a certificate that carries its `ssh_principal`:
 | --- | --- | --- |
 | `pve-root` | nodes | root |
 | `lxc-root` | containers | root |
-| `edge-root` | `tailscale`, `cloudflared` | root |
+| `edge-root` | `tailscale`, `cloudflared`, `netbird` | root |
 | `vm-nggocnn` | VMs | nggocnn |
 | `bastion` | `bastion-01` | nggocnn |
 
