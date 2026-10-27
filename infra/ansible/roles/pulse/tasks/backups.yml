@@ -1,0 +1,51 @@
+---
+# Backup visibility. Proxmox hides a backup file from a user without Datastore.AllocateSpace
+# on its storage and VM.Backup on its guest (PVE::Storage::check_volume_access), and
+# PVEAuditor has neither, so Pulse saw no backups at all. There is no read-only privilege
+# for it: these two also let the token make, upload and delete backups. Narrower than the
+# vendor installer's PVEDatastoreAdmin, and only on the storages listed. Applied every run.
+
+- name: List the roles
+  ansible.builtin.command:
+    cmd: pvesh get /access/roles --output-format json
+  register: _pve_roles
+  changed_when: false
+  check_mode: false
+
+- name: Find {{ pulse_pve_backup_role }}
+  ansible.builtin.set_fact:
+    _pulse_backup_role: "{{ _pve_roles.stdout | from_json | selectattr('roleid', 'equalto', pulse_pve_backup_role) | first | default({}) }}"
+
+- name: Create {{ pulse_pve_backup_role }}
+  ansible.builtin.command:
+    cmd: pveum role add {{ pulse_pve_backup_role }} --privs {{ pulse_pve_backup_privs }}
+  when: _pulse_backup_role | length == 0
+  changed_when: true
+
+- name: Set the privileges of {{ pulse_pve_backup_role }}
+  ansible.builtin.command:
+    cmd: pveum role modify {{ pulse_pve_backup_role }} --privs {{ pulse_pve_backup_privs }}
+  when:
+    - _pulse_backup_role | length > 0
+    - (_pulse_backup_role.privs | default('')).split(',') | sort != pulse_pve_backup_privs.split(',') | sort
+  changed_when: true
+
+- name: Read the ACL
+  ansible.builtin.command:
+    cmd: pvesh get /access/acl --output-format json
+  register: _pve_acl
+  changed_when: false
+  check_mode: false
+
+# /vms for VM.Backup on every guest; each backup storage for Datastore.AllocateSpace.
+- name: Grant {{ pulse_pve_backup_role }}
+  ansible.builtin.command:
+    cmd: pveum acl modify {{ item }} --user {{ pulse_pve_user }} --role {{ pulse_pve_backup_role }}
+  loop: "{{ ['/vms'] + pulse_pve_backup_storages | map('regex_replace', '^', '/storage/') | list }}"
+  when: >-
+    _pve_acl.stdout | from_json
+    | selectattr('ugid', 'equalto', pulse_pve_user)
+    | selectattr('roleid', 'equalto', pulse_pve_backup_role)
+    | selectattr('path', 'equalto', item)
+    | list | length == 0
+  changed_when: true

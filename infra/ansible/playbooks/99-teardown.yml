@@ -85,6 +85,20 @@
       loop: [prometheus@pve, pulse@pve]
       when: item in (_pve_users.stdout | from_json | map(attribute='userid'))
 
+    # The role outlives the user: pulse's backup visibility, roles/pulse/tasks/backups.yml.
+    - name: List the roles
+      ansible.builtin.command:
+        cmd: pvesh get /access/roles --output-format json
+      register: _pve_roles
+      changed_when: false
+      check_mode: false
+
+    - name: Remove the monitoring roles
+      ansible.builtin.command:
+        cmd: pveum role delete {{ item }}
+      loop: [PulseBackupRead]
+      when: item in (_pve_roles.stdout | from_json | map(attribute='roleid'))
+
 - name: Nodes
   hosts: pve
   gather_facts: false

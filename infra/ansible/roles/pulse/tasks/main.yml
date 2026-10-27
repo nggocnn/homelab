@@ -95,3 +95,9 @@
   ansible.builtin.import_tasks: pve.yml
   vars:
     _api: http://127.0.0.1:{{ pulse_port }}/api
+
+- name: Backup visibility
+  delegate_to: "{{ groups['pve_primary'][0] }}"
+  block:
+    - name: Let {{ pulse_pve_user }} see the backups
+      ansible.builtin.import_tasks: backups.yml

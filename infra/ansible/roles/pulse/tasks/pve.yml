@@ -40,8 +40,8 @@
       changed_when: false
       check_mode: false
 
-    # Read-only on the whole tree. The vendor's installer adds PVEDatastoreAdmin on /storage
-    # for backup contents; not here.
+    # Read-only on the whole tree. Backup listings need more, granted narrowly in backups.yml
+    # rather than the vendor installer's PVEDatastoreAdmin on /storage.
     - name: Grant PVEAuditor on /
       ansible.builtin.command:
         cmd: pveum acl modify / --user {{ pulse_pve_user }} --role PVEAuditor

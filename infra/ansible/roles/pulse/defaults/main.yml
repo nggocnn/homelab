@@ -25,3 +25,9 @@ pulse_pve_host: "https://{{ pve_vip }}:8006"
 # Read-only API user and token, created on the cluster primary.
 pulse_pve_user: pulse@pve
 pulse_pve_token: pulse
+
+# Backup visibility on top of PVEAuditor (tasks/backups.yml): a custom role with the two
+# privileges Proxmox requires to list a backup, on these storages and /vms.
+pulse_pve_backup_role: PulseBackupRead
+pulse_pve_backup_privs: Datastore.AllocateSpace,VM.Backup
+pulse_pve_backup_storages: [backup]
