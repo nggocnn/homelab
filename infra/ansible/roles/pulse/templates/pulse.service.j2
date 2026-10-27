@@ -12,6 +12,8 @@ Environment=PULSE_DATA_DIR={{ pulse_data_dir }}
 Environment=FRONTEND_PORT={{ pulse_port }}
 Environment=PULSE_DEPLOYMENT_METHOD=systemd
 Environment=PULSE_TELEMETRY={{ pulse_telemetry | lower }}
+Environment=PVE_POLLING_INTERVAL={{ pulse_pve_polling_interval }}
+Environment=PULSE_METRICS_ROLLUP_INTERVAL={{ pulse_metrics_rollup_interval }}
 EnvironmentFile={{ pulse_data_dir }}/.env
 ExecStart={{ pulse_dir }}/bin/pulse
 Restart=always

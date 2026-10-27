@@ -1,5 +1,5 @@
 ---
-pulse_version: "6.4.5"
+pulse_version: "6.6.0"
 pulse_dir: /opt/pulse
 pulse_data_dir: /etc/pulse   # settings, the encrypted node credentials and the SQLite history
 pulse_port: 7655
@@ -11,6 +11,12 @@ pulse_password_file: "{{ playbook_dir }}/../pulse-password"
 
 # Usage telemetry to the vendor is on unless switched off.
 pulse_telemetry: false
+
+# Disk writes. At the default 10 s poll the SQLite history wrote ~9 GB a day, two thirds
+# of the node's NVMe writes. Prometheus and Beszel already watch the cluster closely, so
+# Pulse polls slower and rolls up less often (docs/METRICS_HISTORY.md, "Disk Write Tuning").
+pulse_pve_polling_interval: 30s
+pulse_metrics_rollup_interval: 30m
 
 # The cluster, through the VIP: Pulse finds the members from there.
 pulse_pve_name: pve
