@@ -1,0 +1,29 @@
+---
+# Per node in inventory: pve_tank_disk, the whole disk the pool is created on. A node
+# without one is skipped.
+pve_tank_pool: tank
+
+# Datasets in place of partitions: they share the pool's free space, and a size is a
+# quota changed with zfs set rather than a boundary fixed at creation.
+pve_tank_datasets:
+  backup: { quota: 200G }   # vzdump, ~2 weeks of the daily job with room
+  nas: {}                   # bind-mounted into nas-01, the rest of the disk
+
+# --- backups ------------------------------------------------------------------
+# Proxmox storage on tank/backup. is_mountpoint: if the pool is not imported, backups
+# fail rather than fill the root filesystem.
+pve_backup_storage: backup
+
+# One job for every guest. Retention lives on the job, not the storage.
+pve_backup_job:
+  id: daily
+  schedule: "03:00"
+  mode: snapshot
+  compress: zstd
+  prune-backups: keep-daily=7,keep-weekly=4,keep-monthly=3
+  notes-template: "{% raw %}{{guestname}}{% endraw %}"
+
+# Pulse's guest-agent reads can collide with the agent's filesystem freeze during a
+# snapshot backup and leave the VM frozen (Pulse docs, VM_DISK_MONITORING.md "Backup
+# safety"). The job's hook stops Pulse for the length of the job.
+pve_backup_pause_pulse: "{{ groups['pulse'] | default([]) | length > 0 }}"

@@ -35,6 +35,7 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent - a second run must report `changed=0`. |
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates`, `pve_isos` and `pve_cloud_images` (to `local:import`) on every node's `local` storage, or only on an entry's `nodes` - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
+| `playbooks/03-storage.yml` | The `tank` ZFS pool on each node's `pve_tank_disk` (create-only; a disk that is not blank is refused, never wiped), with datasets in place of partitions: `tank/backup` (200 GB quota) as the `backup` storage, and `tank/nas` for `nas-01`. Then the `daily` backup job: every guest at 03:00, snapshot mode, zstd, keeping 7 daily, 4 weekly and 3 monthly. Its hook stops Pulse for the length of the job, because Pulse's guest-agent reads can collide with a snapshot's filesystem freeze. |
 | `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01`, advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). Add a second router and Tailscale routes through one at a time and fails over to the other. |
 | `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
@@ -56,6 +57,7 @@ ansible-playbook playbooks/00-host.yml                    # first run
 ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
+ansible-playbook playbooks/03-storage.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
