@@ -1,0 +1,16 @@
+---
+# One user, password from the file, never echoed. No shell, no home: it exists for Samba.
+# uid 1000 inside the container is 101000 on the node, who owns the bind-mounted data.
+samba_user: nggocnn
+samba_uid: 1000
+samba_password_file: "{{ playbook_dir }}/../samba-password"
+
+# -e samba_password_update=true to set it again after changing the file.
+samba_password_update: false
+
+# Bind-mounted from the node by lxc_mounts.
+samba_shares:
+  - { name: nas, path: /srv/nas, comment: "tank/nas on pve-01" }
+
+# The LAN only. Tailscale clients reach it through the subnet router, so they arrive from it.
+samba_hosts_allow: "{{ pve_subnet_cidr }}"

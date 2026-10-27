@@ -1,0 +1,80 @@
+---
+# Samba for Windows: SMB3 only, one user, no guest access, and wsdd2 so the shares show
+# under Network. smb.conf comes from Ansible - a change made by hand is overwritten.
+
+- name: Read the password
+  ansible.builtin.set_fact:
+    _samba_password: "{{ lookup('ansible.builtin.file', samba_password_file, errors='ignore') | default('', true) | trim }}"
+  no_log: true
+
+- name: Assert the password exists
+  ansible.builtin.assert:
+    that: _samba_password | length >= 8
+    fail_msg: "Missing or short {{ samba_password_file | realpath }} - create it with: read -rsp 'Samba password: ' p && printf '%s' \"$p\" > samba-password"
+    quiet: true
+
+- name: Install samba and wsdd2
+  ansible.builtin.apt:
+    name:
+      - samba
+      - wsdd2
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create {{ samba_user }}
+  ansible.builtin.user:
+    name: "{{ samba_user }}"
+    uid: "{{ samba_uid }}"
+    shell: /usr/sbin/nologin
+    create_home: false
+
+# The mount point itself is owned on the node; this only checks it arrived.
+- name: Assert the shares are mounted
+  ansible.builtin.command:
+    cmd: mountpoint -q {{ item.path }}
+  loop: "{{ samba_shares }}"
+  loop_control:
+    label: "{{ item.path }}"
+  changed_when: false
+  check_mode: false
+
+- name: Write smb.conf
+  ansible.builtin.template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: testparm -s %s
+  notify: restart samba
+
+- name: Look for {{ samba_user }} in Samba
+  ansible.builtin.command:
+    cmd: pdbedit -u {{ samba_user }}
+  register: _samba_pdb
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Set the Samba password
+  ansible.builtin.command:
+    cmd: smbpasswd -s -a {{ samba_user }}
+    stdin: "{{ _samba_password }}\n{{ _samba_password }}"
+  when: _samba_pdb.rc != 0 or samba_password_update | bool
+  changed_when: true
+  no_log: true
+
+# NetBIOS is off in smb.conf; wsdd2 does the discovery instead.
+- name: Disable nmbd
+  ansible.builtin.systemd_service:
+    name: nmbd
+    enabled: false
+    state: stopped
+
+- name: Enable and start smbd and wsdd2
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [smbd, wsdd2]

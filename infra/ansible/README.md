@@ -46,9 +46,10 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
 | `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
+| `playbooks/25-nas.yml` | `nas-01`: Samba for Windows on `tank/nas`, bind-mounted from the node, so the data is not in the container's backups. SMB3 only, one user (`nggocnn`, password from `samba-password`), the LAN only, and `wsdd2` so the share shows under Network. Needs 03. Then re-run 13 and 21 for its DNS record and monitoring. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
 | `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so redundant members never restart together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
-| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
+| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay, and so does `tank` with the NAS data. Rebuild from `01-cluster.yml`. |
 
 ```bash
 ssh-add -t 1h ~/.ssh/ca/user_ca ~/.ssh/ca/host_ca          # a run that signs asks for it
@@ -78,6 +79,8 @@ ansible-playbook playbooks/22-prometheus.yml
 ansible-playbook playbooks/23-loki.yml
 (umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)   # gitignored
 ansible-playbook playbooks/24-pulse.yml
+(umask 077; read -rsp 'Samba password: ' p && printf '%s' "$p" > samba-password; unset p)   # gitignored
+ansible-playbook playbooks/25-nas.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
 

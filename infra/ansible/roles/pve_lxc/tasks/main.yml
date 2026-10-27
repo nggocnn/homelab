@@ -44,6 +44,7 @@
           --nameserver {{ lxc_nameserver }}
           {% if lxc_pool %}--pool {{ lxc_pool }}{% endif %}
           {% for dev in lxc_devices %}--dev{{ loop.index0 }} {{ dev }} {% endfor %}
+          {% for m in lxc_mounts %}--mp{{ loop.index0 }} {{ m.host }},mp={{ m.path }} {% endfor %}
           --ssh-public-keys /tmp/lxc-{{ lxc_vmid }}.pub
           --onboot 1
           --start 1

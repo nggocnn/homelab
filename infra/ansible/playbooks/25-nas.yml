@@ -1,0 +1,30 @@
+---
+# nas-01: Samba for Windows on tank/nas, bind-mounted from the node. Needs 03-storage.yml.
+# Then re-run 13 and 21 for its DNS record and its ping monitor.
+#
+#   (umask 077; read -rsp 'Samba password: ' p && printf '%s' "$p" > samba-password; unset p)
+#   ansible-playbook playbooks/25-nas.yml
+#   \\nas-01.nggocnn.internal\nas from Windows, as nggocnn
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: NAS
+  hosts: nas
+  gather_facts: false
+  pre_tasks:
+    # Container uid N is node uid 100000 + N. Before creation, so the share is writable
+    # from the first start.
+    - name: Hand the mounts to the share user
+      ansible.builtin.file:
+        path: "{{ item.host }}"
+        state: directory
+        owner: "{{ 100000 + samba_uid }}"
+        group: "{{ 100000 + samba_uid }}"
+        mode: "0770"
+      loop: "{{ lxc_mounts }}"
+      delegate_to: "{{ lxc_node }}"
+  roles:
+    - pve_lxc
+    - guest_ssh
+    - apt_packages
+    - samba

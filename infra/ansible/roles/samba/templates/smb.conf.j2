@@ -1,0 +1,38 @@
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+
+[global]
+   server role = standalone server
+   workgroup = WORKGROUP
+   server string = %h
+
+   # Windows 10 and later speak SMB3; nothing older gets in.
+   server min protocol = SMB3
+
+   hosts allow = {{ samba_hosts_allow }} 127.0.0.1
+   hosts deny = 0.0.0.0/0
+
+   # No guest and no anonymous listing.
+   map to guest = never
+   restrict anonymous = 2
+
+   # Port 445 only. wsdd2 makes the shares visible under Network instead.
+   disable netbios = yes
+   smb ports = 445
+
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   disable spoolss = yes
+
+   logging = systemd
+   log level = 1
+{% for s in samba_shares %}
+
+[{{ s.name }}]
+   comment = {{ s.comment | default('') }}
+   path = {{ s.path }}
+   valid users = {{ samba_user }}
+   read only = no
+   create mask = 0664
+   directory mask = 0775
+{% endfor %}

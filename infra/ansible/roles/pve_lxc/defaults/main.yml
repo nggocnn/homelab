@@ -21,5 +21,9 @@ lxc_pool: ""
 # Host device paths passed through, e.g. [/dev/net/tun].
 lxc_devices: []
 
+# Host directories bind-mounted in, e.g. [{ host: /tank/nas, path: /srv/nas }]. Not in the
+# container's backups. Unprivileged: container uid N is host uid 100000 + N.
+lxc_mounts: []
+
 # Authorised for root inside the container.
 lxc_root_authorized_keys: []
