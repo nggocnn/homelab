@@ -1,5 +1,5 @@
 ---
-# Samba for Windows: SMB3 only, one user, no guest access, and wsdd2 so the shares show
+# Samba for Windows: SMB 2.1 and up (signed, SMB3 encrypted), one user, no guest access, and wsdd2 so the shares show
 # under Network. smb.conf comes from Ansible - a change made by hand is overwritten.
 
 - name: Read the password

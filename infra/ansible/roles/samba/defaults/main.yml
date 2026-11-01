@@ -12,5 +12,9 @@ samba_password_update: false
 samba_shares:
   - { name: nas, path: /srv/nas, comment: "tank/nas on pve-01" }
 
+# Lowest dialect accepted. SMB2_10 for compatibility with clients that stop at SMB 2.1;
+# SMB1 stays off. Clients that can do SMB3 (Windows) still negotiate it, and encrypt.
+samba_min_protocol: SMB2_10
+
 # The LAN only. Tailscale clients reach it through the subnet router, so they arrive from it.
 samba_hosts_allow: "{{ pve_subnet_cidr }}"

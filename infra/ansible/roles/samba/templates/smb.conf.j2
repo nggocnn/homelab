@@ -5,8 +5,11 @@
    workgroup = WORKGROUP
    server string = %h
 
-   # Windows 10 and later speak SMB3; nothing older gets in.
-   server min protocol = SMB3
+   # SMB1 never. SMB3 clients encrypt; SMB 2.x has no encryption, so every session is
+   # at least signed.
+   server min protocol = {{ samba_min_protocol }}
+   server smb encrypt = desired
+   server signing = mandatory
 
    hosts allow = {{ samba_hosts_allow }} 127.0.0.1
    hosts deny = 0.0.0.0/0
