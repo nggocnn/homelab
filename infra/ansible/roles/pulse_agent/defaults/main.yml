@@ -1,5 +1,5 @@
 ---
-pulse_agent_version: "6.4.5"   # the server's
+pulse_agent_version: "6.6.0"   # the server's
 pulse_agent_state_dir: /var/lib/pulse-agent
 
 # The server reported to, and the login that mints this host's token there.

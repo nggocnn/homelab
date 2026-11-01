@@ -1,0 +1,15 @@
+---
+# The tank pool on each node's pve_tank_disk: tank/backup as the `backup` storage with a
+# daily job for every guest, and tank/nas for nas-01. Create-only for the pool; a disk
+# that is not blank is refused.
+#
+#   ansible-playbook playbooks/03-storage.yml --check --diff
+#   ansible-playbook playbooks/03-storage.yml
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Storage
+  hosts: pve
+  gather_facts: false
+  roles:
+    - pve_tank

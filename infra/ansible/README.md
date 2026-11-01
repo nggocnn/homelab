@@ -35,6 +35,7 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent - a second run must report `changed=0`. |
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates`, `pve_isos` and `pve_cloud_images` (to `local:import`) on every node's `local` storage, or only on an entry's `nodes` - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
+| `playbooks/03-storage.yml` | The `tank` ZFS pool on each node's `pve_tank_disk` (create-only; a disk that is not blank is refused, never wiped), with datasets in place of partitions: `tank/backup` (200 GB quota) as the `backup` storage, and `tank/nas` for `nas-01`. Then the `daily` backup job: every guest at 03:00, snapshot mode, zstd, keeping 7 daily, 4 weekly and 3 monthly. Its hook stops Pulse for the length of the job, because Pulse's guest-agent reads can collide with a snapshot's filesystem freeze. |
 | `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01`, advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). Add a second router and Tailscale routes through one at a time and fails over to the other. |
 | `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
@@ -45,10 +46,11 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
-| `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
+| `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, plus `Datastore.AllocateSpace` and `VM.Backup` on `/storage/backup` and `/vms` so it can list backups, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Polls every 30 s and rolls up every 30 min, to keep its SQLite writes off the NVMe. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
+| `playbooks/25-nas.yml` | `nas-01`: Samba for Windows on `tank/nas`, bind-mounted from the node, so the data is not in the container's backups. SMB3 only, one user (`nggocnn`, password from `samba-password`), the LAN only, and `wsdd2` so the share shows under Network. Needs 03. Then re-run 13 and 21 for its DNS record and monitoring. |
 | `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
 | `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so redundant members never restart together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
-| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay. Rebuild from `01-cluster.yml`. |
+| `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users and Pulse's `PulseBackupRead` role. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay, and so does `tank` with the NAS data. Rebuild from `01-cluster.yml`. |
 
 ```bash
 ssh-add -t 1h ~/.ssh/ca/user_ca ~/.ssh/ca/host_ca          # a run that signs asks for it
@@ -57,6 +59,7 @@ ansible-playbook playbooks/00-host.yml                    # first run
 ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
+ansible-playbook playbooks/03-storage.yml
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
@@ -79,6 +82,8 @@ ansible-playbook playbooks/22-prometheus.yml
 ansible-playbook playbooks/23-loki.yml
 (umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)   # gitignored
 ansible-playbook playbooks/24-pulse.yml
+(umask 077; read -rsp 'Samba password: ' p && printf '%s' "$p" > samba-password; unset p)   # gitignored
+ansible-playbook playbooks/25-nas.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
 

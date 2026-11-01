@@ -1,0 +1,11 @@
+---
+# --- container ----------------------------------------------------------------
+lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml
+lxc_pool: infrastructure
+lxc_memory_mb: 512
+lxc_disk_gb: 4   # the OS only: the data is on tank/nas
+
+# tank/nas from 03-storage.yml. Bind mounts are left out of vzdump, so the NAS data is
+# not copied onto the same disk by the backup job.
+lxc_mounts:
+  - { host: /tank/nas, path: /srv/nas }

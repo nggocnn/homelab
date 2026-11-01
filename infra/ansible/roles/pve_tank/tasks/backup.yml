@@ -1,0 +1,80 @@
+---
+# The backup storage on tank/backup and the daily job. storage.cfg and jobs.cfg are
+# cluster-wide, so those are applied once; the hook is a file on every node with a pool.
+
+- name: Install the backup hook
+  ansible.builtin.template:
+    src: vzdump-hook.j2
+    dest: /usr/local/sbin/vzdump-hook
+    owner: root
+    group: root
+    mode: "0755"
+  when: pve_tank_disk is defined
+
+- name: Storage and job
+  run_once: true
+  delegate_to: "{{ pve_cluster_primary }}"
+  vars:
+    _tank_nodes: "{{ groups['pve'] | map('extract', hostvars) | selectattr('pve_tank_disk', 'defined') | map(attribute='inventory_hostname') | list }}"
+    _job: "{{ pve_backup_job | dict2items | rejectattr('key', 'equalto', 'id') | items2dict
+      | combine({'storage': pve_backup_storage, 'all': 1, 'enabled': 1},
+                {'script': '/usr/local/sbin/vzdump-hook'} if pve_backup_pause_pulse | bool else {}) }}"
+  when: _tank_nodes | length > 0
+  block:
+    - name: List the storages
+      ansible.builtin.command:
+        cmd: pvesh get /storage --output-format json
+      register: _storages
+      changed_when: false
+      check_mode: false
+
+    - name: Add the {{ pve_backup_storage }} storage
+      ansible.builtin.command:
+        cmd: >-
+          pvesm add dir {{ pve_backup_storage }}
+          --path /{{ pve_tank_pool }}/backup
+          --content backup
+          --is_mountpoint yes
+          --nodes {{ _tank_nodes | join(',') }}
+      when: pve_backup_storage not in (_storages.stdout | from_json | map(attribute='storage'))
+      changed_when: true
+
+    - name: List the backup jobs
+      ansible.builtin.command:
+        cmd: pvesh get /cluster/backup --output-format json
+      register: _jobs
+      changed_when: false
+      check_mode: false
+
+    - name: Find the {{ pve_backup_job.id }} job
+      ansible.builtin.set_fact:
+        _job_now: "{{ _jobs.stdout | from_json | selectattr('id', 'equalto', pve_backup_job.id) | first | default({}) }}"
+
+    - name: Create the {{ pve_backup_job.id }} job
+      ansible.builtin.command:
+        argv: >-
+          {%- set a = ['pvesh', 'create', '/cluster/backup', '--id', pve_backup_job.id] -%}
+          {%- for k, v in _job.items() %}{% set _ = a.extend(['--' ~ k, v | string]) %}{% endfor -%}
+          {{- a -}}
+      when: _job_now | length == 0
+      changed_when: true
+
+    # Only the keys that differ, so a setting added in the web UI and not named here stays.
+    # The API returns prune-backups as an object; it is compared as its sorted k=v list.
+    - name: Update the {{ pve_backup_job.id }} job
+      ansible.builtin.command:
+        argv: >-
+          {%- set a = ['pvesh', 'set', '/cluster/backup/' ~ pve_backup_job.id] -%}
+          {%- for k, v in _drift.items() %}{% set _ = a.extend(['--' ~ k, v | string]) %}{% endfor -%}
+          {{- a -}}
+      vars:
+        _drift: >-
+          {%- set d = {} -%}
+          {%- for k, v in _job.items() -%}
+          {%- set now = _job_now[k] | default('') -%}
+          {%- if now is mapping %}{% set now = now.items() | map('join', '=') | sort | join(',') %}{% set v = v.split(',') | sort | join(',') %}{% endif -%}
+          {%- if now | string != v | string %}{% set _ = d.update({k: _job[k]}) %}{% endif -%}
+          {%- endfor -%}
+          {{- d -}}
+      when: _job_now | length > 0 and _drift | length > 0
+      changed_when: true

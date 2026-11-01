@@ -1,0 +1,59 @@
+---
+# The tank pool on pve_tank_disk and its datasets. Create-only for the pool: one that
+# exists is left as it is, and a disk that is not blank is refused, never wiped.
+# The ARC cap is the installer's, in /etc/modprobe.d/zfs.conf.
+
+- name: Pool on {{ inventory_hostname }}
+  when: pve_tank_disk is defined
+  block:
+    - name: Look for the {{ pve_tank_pool }} pool
+      ansible.builtin.command:
+        cmd: zpool list -H -o name {{ pve_tank_pool }}
+      register: _tank
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Create the pool
+      when: _tank.rc != 0
+      block:
+        - name: Read the disk's signatures
+          ansible.builtin.command:
+            cmd: lsblk -nro NAME,FSTYPE,PTTYPE {{ pve_tank_disk }}
+          register: _tank_disk
+          changed_when: false
+          check_mode: false
+
+        # One line, no filesystem and no partition table: a blank disk.
+        - name: Assert the disk is blank
+          ansible.builtin.assert:
+            that: _tank_disk.stdout_lines | length == 1 and _tank_disk.stdout.split() | length == 1
+            fail_msg: >-
+              {{ pve_tank_disk }} is not blank: {{ _tank_disk.stdout_lines | join(' | ') }}.
+              If its data can go: wipefs -a {{ pve_tank_disk }}, then re-run.
+            quiet: true
+
+        # ashift=12: 4K physical sectors. xattr=sa and posixacl for Samba's ACLs.
+        - name: Create {{ pve_tank_pool }} on {{ pve_tank_disk }}
+          ansible.builtin.command:
+            cmd: >-
+              zpool create -o ashift=12
+              -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl
+              -O mountpoint=/{{ pve_tank_pool }}
+              {{ pve_tank_pool }} {{ pve_tank_disk }}
+          changed_when: true
+
+    - name: Create the datasets
+      community.general.zfs:
+        name: "{{ pve_tank_pool }}/{{ item.key }}"
+        state: present
+        extra_zfs_properties:
+          quota: "{{ item.value.quota | default('none') }}"
+      loop: "{{ pve_tank_datasets | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: _tank.rc == 0 or not ansible_check_mode
+
+- name: Backups
+  ansible.builtin.import_tasks: backup.yml
+  tags: [backup]

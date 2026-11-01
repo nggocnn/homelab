@@ -1,0 +1,32 @@
+#!/bin/sh
+# Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+#
+# vzdump hook for the {{ pve_backup_job.id }} job. Pulse's guest-agent reads can collide with
+# the agent's filesystem freeze during a snapshot backup and leave the VM frozen (Pulse docs,
+# VM_DISK_MONITORING.md "Backup safety"), so Pulse is stopped for the length of the job.
+# Started again only if this hook stopped it. A failure here never fails the backup.
+{% if pve_backup_pause_pulse | bool %}
+ct={{ hostvars[groups['pulse'][0]].ansible_host.split('.')[-1] }}
+marker=/run/vzdump-hook-pulse-stopped
+
+pulse_running() {
+    pct status "$ct" 2>/dev/null | grep -q running &&
+        pct exec "$ct" -- systemctl is-active --quiet pulse
+}
+
+case "$1" in
+    job-start)
+        if pulse_running; then
+            pct exec "$ct" -- systemctl stop pulse && touch "$marker" &&
+                echo "vzdump-hook: stopped Pulse in CT $ct"
+        fi
+        ;;
+    job-end|job-abort)
+        if [ -e "$marker" ]; then
+            pct exec "$ct" -- systemctl start pulse && rm -f "$marker" &&
+                echo "vzdump-hook: started Pulse in CT $ct"
+        fi
+        ;;
+esac
+{% endif %}
+exit 0
