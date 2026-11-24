@@ -5,13 +5,19 @@
   register: _create
   changed_when: _create.rc == 0
 
-# A single-node cluster is quorate immediately (1 of 1).
-# Waiting here means the first joiner never races corosync coming up.
-- name: Wait for the new cluster to be quorate
-  ansible.builtin.command:
-    cmd: pvecm status
+# A single-node cluster is quorate immediately (1 of 1) - in corosync. pmxcfs, which keeps
+# /etc/pve read-only without quorum, only reconnects to corosync on its next retry, up to
+# ~5 s later: `pvecm status` already says Quorate while a write to /etc/pve still gets EACCES
+# (the first join's authorized_keys write on the primary failed exactly so, 2026-11-24).
+# So wait for a write to succeed, not for the status line.
+- name: Wait for /etc/pve to accept writes
+  ansible.builtin.shell:
+    cmd: >-
+      pvecm status | grep -qE 'Quorate:\s+Yes'
+      && touch /etc/pve/.ansible-write-probe
+      && rm -f /etc/pve/.ansible-write-probe
   register: _create_quorum
-  until: _create_quorum.stdout is search('Quorate:\s+Yes')
+  until: _create_quorum.rc == 0
   retries: 24
   delay: 5
   changed_when: false

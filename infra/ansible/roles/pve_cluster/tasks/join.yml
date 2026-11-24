@@ -17,13 +17,13 @@
     src: /root/.ssh/id_rsa.pub
   register: _root_pubkey
 
+# The primary's file is /etc/pve/priv/authorized_keys (a symlink from /root/.ssh): lineinfile,
+# because ansible.posix.authorized_key chowns to root:root and pmxcfs refuses it (pve_host ssh.yml).
 - name: Authorise this node's root key on the primary
-  ansible.posix.authorized_key:
-    user: root
-    key: "{{ _root_pubkey.content | b64decode }}"
-    state: present
-    exclusive: false
-    follow: true # the primary's file is a symlink into /etc/pve once the cluster exists
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/authorized_keys
+    search_string: "{{ _root_pubkey.content | b64decode | regex_search('AAAA[0-9A-Za-z+/=]+') }}"
+    line: "{{ _root_pubkey.content | b64decode | trim }}"
   delegate_to: "{{ pve_cluster_primary }}"
 
 - name: Read the primary's SSH host key
@@ -59,9 +59,11 @@
 - name: Reset the connection after the join
   ansible.builtin.meta: reset_connection
 
+# Quorate in corosync comes a few seconds before pmxcfs lets /etc/pve be written (create.yml),
+# and the next join writes to /etc/pve on the primary: wait for a write here too.
 - name: Wait for this node to report cluster membership
-  ansible.builtin.command:
-    cmd: pvecm status
+  ansible.builtin.shell:
+    cmd: pvecm status && touch /etc/pve/.ansible-write-probe && rm -f /etc/pve/.ansible-write-probe
   register: _member
   until: _member.rc == 0 and _member.stdout is search('Quorate:\s+Yes')
   retries: 30
