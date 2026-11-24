@@ -22,7 +22,8 @@ root-password-hashed = ""
 
 # ---- CHANGE ME (3 of 4) ------------------------------------------------------
 root-ssh-keys = [
-  "ssh-ed25519 ...",
+  'cert-authority,principals="pve-root" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGYHCiLUnSrJmh/2U1/KjWFycXeALtY8O7PdgXfzaLQ2 user_ca.nggocnn.internal',
+  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ7LgxjW0DOvD/mcekq8tvFHg6ITG2VRaoU96Bhy36uP break-glass.nggocnn.internal',
 ]
 # ------------------------------------------------------------------------------
 
