@@ -36,8 +36,11 @@ DOMAIN="nggocnn.internal"
 
 # ----------------------------------------------------------------------------
 # helper: append kernel parameters on either bootloader
-#   ZFS root  -> systemd-boot, /etc/kernel/cmdline, proxmox-boot-tool refresh
-#   ext4/LVM  -> GRUB, /etc/default/grub, update-grub
+#   ZFS root, Secure Boot off -> systemd-boot, /etc/kernel/cmdline, proxmox-boot-tool refresh
+#   anything else             -> GRUB, /etc/default/grub, update-grub
+# Asked of proxmox-boot-tool, not read from /etc/kernel/cmdline: a ZFS install always writes
+# that file, but with Secure Boot on it boots the signed GRUB, which ignores it (pve-01 and
+# pve-02 in 2026-11 got no IOMMU flags that way).
 # ----------------------------------------------------------------------------
 add_cmdline() {
   local param="$1" key="${1%%=*}"
@@ -45,7 +48,7 @@ add_cmdline() {
   # Match the whole token
   local re="(^|[[:space:]\"])${key}(=|[[:space:]\"]|\$)"
 
-  if [ -f /etc/kernel/cmdline ]; then
+  if proxmox-boot-tool status 2>/dev/null | grep -q 'configured with: uefi'; then
     grep -qE "$re" /etc/kernel/cmdline && return 0
     sed -i "1 s|\$| $param|" /etc/kernel/cmdline
     proxmox-boot-tool refresh
