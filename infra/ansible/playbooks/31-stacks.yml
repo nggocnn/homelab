@@ -1,0 +1,17 @@
+---
+# Docker Compose stacks on the Docker hosts: each host's compose_stacks (group_vars/home.yml
+# for home-01) from infra/ansible/stacks/<name>/. After 30-docker.yml. Re-run after editing a
+# compose.yaml; add -e compose_pull=true to update the images.
+#
+#   ansible-playbook playbooks/31-stacks.yml --check --diff
+#   ansible-playbook playbooks/31-stacks.yml
+#   ansible-playbook playbooks/31-stacks.yml -e compose_pull=true
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Compose stacks
+  hosts: docker
+  gather_facts: false
+  roles:
+    - role: compose_stack
+      when: compose_stacks | default([]) | length > 0

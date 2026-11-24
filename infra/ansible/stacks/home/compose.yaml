@@ -1,0 +1,34 @@
+# home-01: Home Assistant Container and ESPHome. Deployed by 31-stacks.yml to /opt/stacks/home;
+# the config folders sit beside this file on the VM disk (nightly backup + replica on pve-03).
+#
+# Host networking for both: Home Assistant finds ESPHome devices, Chromecasts and the like
+# through mDNS, which doesn't cross a Docker bridge. Bluetooth devices come in through ESP32s
+# running the ESPHome `bluetooth_proxy` component, so no adapter is passed through.
+#
+# Container install = no Supervisor and no add-on store. What add-ons did is a service here.
+# Tags: `stable` follows releases. Pin a version (e.g. 2026.11.2) once it runs, then bump it
+# on purpose; update with: ansible-playbook playbooks/31-stacks.yml -e compose_pull=true
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host            # http://ha.nggocnn.internal:8123
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro    # only for HA's own Bluetooth integration; harmless without an adapter
+
+  esphome:
+    image: ghcr.io/esphome/esphome:stable
+    container_name: esphome
+    network_mode: host            # dashboard on http://esphome.nggocnn.internal:6052, mDNS to the boards
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      ESPHOME_DASHBOARD_USE_PING: "true"   # ICMP instead of mDNS for online status: works across VLANs
+    volumes:
+      - ./esphome:/config
+      - /etc/localtime:/etc/localtime:ro

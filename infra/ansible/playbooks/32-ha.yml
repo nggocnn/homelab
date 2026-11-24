@@ -1,0 +1,18 @@
+---
+# Storage replication and Proxmox HA for the VMs with vm_replicate_to (inventory/hosts.yml):
+# a ZFS replica on the target every 15 min, and an HA resource that prefers vm_node and
+# falls back to the replica. Needs three nodes for quorum, ZFS storage on both ends
+# (answer.toml), and the VMs to exist: run after 30-docker.yml, and again for a new VM.
+#
+#   ansible-playbook playbooks/32-ha.yml --check --diff
+#   ansible-playbook playbooks/32-ha.yml
+#
+# Check afterwards on any node: pvesr status; ha-manager status; ha-manager rules config
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Replication and HA
+  hosts: pve_primary
+  gather_facts: false
+  roles:
+    - pve_ha

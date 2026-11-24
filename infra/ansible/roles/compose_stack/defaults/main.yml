@@ -1,0 +1,11 @@
+---
+# Per host: compose_stacks, a list of names under infra/ansible/stacks/. Each stack is
+#   stacks/<name>/compose.yaml   copied as-is (no Jinja: compose files have their own ${VARS})
+#   stacks/<name>/env            optional, ansible-vault encrypted, decrypted on copy to .env
+# and lands in compose_stack_root/<name>, where its bind-mounted data lives beside it.
+compose_stacks: []
+compose_stack_src: "{{ playbook_dir }}/../stacks"
+compose_stack_root: /opt/stacks
+
+# -e compose_pull=true pulls newer images for the tags in compose.yaml before `up`.
+compose_pull: false

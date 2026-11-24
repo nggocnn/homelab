@@ -9,7 +9,7 @@ vm_hwaddr: "{{ 'BC:24:11:00:%02X:%02X' | format(vm_vmid | int // 256, vm_vmid | 
 
 # A pve_cloud_images entry, imported as the boot disk and grown to vm_disk_gb.
 vm_image: local:import/ubuntu-24.04-server-cloudimg-amd64-20260926.qcow2
-vm_storage: local-lvm
+vm_storage: local-zfs   # ZFS root (answer.toml); replication needs ZFS on both ends
 vm_disk_gb: 16
 vm_cores: 2
 vm_memory_mb: 2048

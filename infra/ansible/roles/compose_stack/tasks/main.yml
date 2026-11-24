@@ -1,0 +1,81 @@
+---
+# Docker Compose stacks on a Docker host (30-docker.yml first). Idempotent: `up -d` only
+# recreates containers whose image or config changed. Data directories are the stack's own
+# bind mounts under compose_stack_root/<name>, so they are on the VM disk: in the nightly
+# backup, and in the replica when the VM is replicated.
+
+- name: Assert each stack exists in the repo
+  ansible.builtin.assert:
+    that: (compose_stack_src ~ '/' ~ item ~ '/compose.yaml') is file
+    fail_msg: "No {{ compose_stack_src | realpath }}/{{ item }}/compose.yaml"
+    quiet: true
+  loop: "{{ compose_stacks }}"
+  delegate_to: localhost
+  become: false
+
+- name: Create the stack directories
+  ansible.builtin.file:
+    path: "{{ compose_stack_root }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop: "{{ ['.'] + compose_stacks }}"
+
+- name: Copy compose.yaml
+  ansible.builtin.copy:
+    src: "{{ compose_stack_src }}/{{ item }}/compose.yaml"
+    dest: "{{ compose_stack_root }}/{{ item }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0640"
+  loop: "{{ compose_stacks }}"
+
+# copy decrypts an ansible-vault source on the way, so the file in git stays encrypted.
+- name: Copy the stack's secrets to .env
+  ansible.builtin.copy:
+    src: "{{ compose_stack_src }}/{{ item }}/env"
+    dest: "{{ compose_stack_root }}/{{ item }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ compose_stacks }}"
+  when: (compose_stack_src ~ '/' ~ item ~ '/env') is file
+  no_log: true
+
+- name: Pull newer images
+  ansible.builtin.command:
+    cmd: docker compose pull --quiet
+    chdir: "{{ compose_stack_root }}/{{ item }}"
+  loop: "{{ compose_stacks }}"
+  when: compose_pull | bool
+  register: _pull
+  changed_when: false
+
+# `up` reports what it did on stderr, one line per container: "Started", "Recreated", "Created".
+- name: Start the stacks
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: "{{ compose_stack_root }}/{{ item }}"
+  loop: "{{ compose_stacks }}"
+  register: _up
+  changed_when: _up.stderr is search('\\b(Created|Recreated|Started|Removed)\\b')
+
+- name: List what is running
+  ansible.builtin.command:
+    cmd: docker compose ps --format '{{ "{{" }}.Service{{ "}}" }} {{ "{{" }}.State{{ "}}" }}'
+    chdir: "{{ compose_stack_root }}/{{ item }}"
+  loop: "{{ compose_stacks }}"
+  register: _ps
+  changed_when: false
+  when: not ansible_check_mode   # a new stack's directory doesn't exist yet in --check
+
+- name: Assert every service is running
+  ansible.builtin.assert:
+    that: item.stdout_lines | reject('search', ' running$') | list | length == 0
+    fail_msg: "{{ item.item }}: not running: {{ item.stdout_lines | reject('search', ' running$') | join(', ') }}"
+    quiet: true
+  loop: "{{ _ps.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not ansible_check_mode

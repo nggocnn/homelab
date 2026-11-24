@@ -29,6 +29,8 @@ REPO_HOST=sg.cdn.proxmox.com
 # Your cluster - used by DO_HOSTS
 declare -A NODES=(
   [pve-01]=10.10.10.11
+  [pve-02]=10.10.10.12
+  [pve-03]=10.10.10.13
 )
 DOMAIN="nggocnn.internal"
 

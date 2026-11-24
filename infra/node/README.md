@@ -2,12 +2,13 @@
 
 ## Target configuration
 
-| | pve-01 |
-| --- | --- |
-| FQDN | `pve-01.nggocnn.internal` |
-| IP | `10.10.10.11/24` |
+| | pve-01 | pve-02 | pve-03 |
+| --- | --- | --- | --- |
+| FQDN | `pve-01.nggocnn.internal` | `pve-02.nggocnn.internal` | `pve-03.nggocnn.internal` |
+| IP | `10.10.10.11/24` | `10.10.10.12/24` | `10.10.10.13/24` |
+| Machine | P330 Tiny, i7-9700, 32 GB, 512 GB NVMe + 1 TB HDD (`tank`) | P330 Tiny, i7-8700, 16 GB | P330 Tiny, i7-8700, 16 GB |
 
-A new node takes the next name and address (`pve-02`, `10.10.10.12`): add it to `n` in steps 2
+A new node takes the next name and address (`pve-04`, `10.10.10.14`): add it to `n` in steps 2
 and 3, to `NODES` in `first-boot.sh` and to the `pve` group in the Ansible inventory.
 
 **`.internal` for node identity:** ICANN permanently reserved it from root-zone
@@ -96,7 +97,7 @@ inputs; nothing else is hand-edited.
 rm -f answer-*.toml
 
 HASH=$(cat root-password.hash)
-for n in 01; do
+for n in 01 02 03; do
   sed -e "s|^fqdn = .*|fqdn = \"pve-$n.nggocnn.internal\"|" \
       -e "s|^cidr = .*|cidr = \"10.10.10.$((10#$n + 10))/24\"|" \
       -e "s|^root-password-hashed = .*|root-password-hashed = \"$HASH\"|" \
@@ -107,7 +108,7 @@ done
 grep -H '^fqdn\|^cidr' answer-0*.toml
 ```
 
-Expect `.11` against `pve-01.nggocnn.internal`.
+Expect `.11`, `.12` and `.13` against `pve-01`, `pve-02` and `pve-03.nggocnn.internal`.
 
 ---
 
@@ -116,7 +117,7 @@ Expect `.11` against `pve-01.nggocnn.internal`.
 ```bash
 rm -f pve-*.iso         # cleanup before build
 
-for n in 01; do
+for n in 01 02 03; do
   proxmox-auto-install-assistant validate-answer answer-$n.toml || break
   proxmox-auto-install-assistant prepare-iso proxmox-ve_9.2-1.iso \
     --fetch-from iso \
@@ -125,7 +126,7 @@ for n in 01; do
     --output pve-$n.iso
 done
 
-for n in 01; do proxmox-auto-install-assistant inspect-iso pve-$n.iso; done
+for n in 01 02 03; do proxmox-auto-install-assistant inspect-iso pve-$n.iso; done
 ```
 
 Expect fetch mode `iso` **and** an answer file listed.
@@ -166,6 +167,11 @@ sudo dd if=/dev/sdX bs=1M iflag=fullblock status=none | head -c $SZ | sha256sum
 
 - Stick in, power on, **F12**, boot the USB, take the default **Automated Installation**
 - It wipes `nvme0n1`, installs, reboots, then runs `first-boot.sh` doing an `apt full-upgrade`.
+- **pve-01 keeps its HDD**, the `tank` pool with the NAS data and the backups. The installer only
+  writes the disks in `disk-list`, so the HDD stays connected and untouched. `03-storage.yml` imports
+  the pool again. If pve-01 could run `zpool export tank` before the reinstall, that import just works;
+  if not (the 2026-11 rebuild: the SSH keys were lost), the pool still carries the old install's
+  host id and needs `-e pve_tank_force_import=true` once - safe, as no other machine has the disk.
 
 ### Verify each node
 

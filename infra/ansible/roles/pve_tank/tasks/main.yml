@@ -1,7 +1,8 @@
 ---
 # The tank pool on pve_tank_disk and its datasets. Create-only for the pool: one that
-# exists is left as it is, and a disk that is not blank is refused, never wiped.
-# The ARC cap is the installer's, in /etc/modprobe.d/zfs.conf.
+# is imported is left as it is, one that exists on the disk but is not imported (a node
+# reinstalled with the HDD kept) is imported, and a disk that is anything else is refused,
+# never wiped. The ARC cap is the installer's, in /etc/modprobe.d/zfs.conf.
 
 - name: Pool on {{ inventory_hostname }}
   when: pve_tank_disk is defined
@@ -14,8 +15,56 @@
       failed_when: false
       check_mode: false
 
-    - name: Create the pool
+    # `zpool import` with no name lists what could be imported. Searched on pve_tank_disk only,
+    # so a pool on some other disk is never picked up - on -part1, because `zpool create` on a
+    # whole disk puts the pool in partition 1; `-d <whole disk>` finds nothing (tested on pve-01).
+    - name: Look for an exported {{ pve_tank_pool }} pool
+      ansible.builtin.command:
+        cmd: zpool import -d {{ pve_tank_disk }}-part1
+      register: _tank_importable
+      changed_when: false
+      failed_when: false
+      check_mode: false
       when: _tank.rc != 0
+
+    - name: Note whether {{ pve_tank_pool }} is on the disk
+      ansible.builtin.set_fact:
+        _tank_on_disk: >-
+          {{ _tank.rc != 0 and (_tank_importable.stdout | default('')) is search('pool: ' ~ pve_tank_pool ~ '\\b') }}
+
+    # A pool not exported before the reinstall was last used by another host id, and needs -f.
+    # Only with -e pve_tank_force_import=true: forcing a pool that another live host has imported
+    # corrupts it, so it is a decision, not a default.
+    - name: Import {{ pve_tank_pool }}
+      ansible.builtin.command:
+        cmd: >-
+          zpool import -d {{ pve_tank_disk }}-part1
+          {{ '-f' if pve_tank_force_import | bool else '' }} {{ pve_tank_pool }}
+      register: _tank_import
+      changed_when: _tank_import.rc == 0
+      failed_when: false
+      when: _tank_on_disk | bool
+
+    - name: Assert the import succeeded
+      ansible.builtin.assert:
+        that: _tank_import.rc == 0
+        fail_msg: >-
+          {{ pve_tank_pool }} is on {{ pve_tank_disk }} but did not import: {{ _tank_import.stderr | trim }}.
+          After a reinstall without `zpool export {{ pve_tank_pool }}` first, the pool belongs to the old
+          install's host id. If no other machine has this disk, re-run with -e pve_tank_force_import=true.
+        quiet: true
+      when: _tank_import is not skipped and not ansible_check_mode
+
+    # Not a second `register: _tank`: a skipped task overwrites its register, so _tank.rc would
+    # be gone in the normal case, the pool already imported.
+    - name: Note whether {{ pve_tank_pool }} is imported now
+      ansible.builtin.set_fact:
+        _tank_present: "{{ _tank.rc == 0 or (_tank_import.rc | default(1)) == 0 }}"
+
+    # Never for a disk that holds the pool, imported or not - also in --check, where the import
+    # above is skipped and the pool still looks absent.
+    - name: Create the pool
+      when: not _tank_present | bool and not _tank_on_disk | bool
       block:
         - name: Read the disk's signatures
           ansible.builtin.command:
@@ -52,7 +101,7 @@
       loop: "{{ pve_tank_datasets | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
-      when: _tank.rc == 0 or not ansible_check_mode
+      when: _tank_present | bool or not ansible_check_mode
 
 - name: Backups
   ansible.builtin.import_tasks: backup.yml

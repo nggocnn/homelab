@@ -1,0 +1,165 @@
+---
+# Storage replication and HA for every VM with vm_replicate_to. Cluster-wide config, so run on
+# the primary only. Create-only plus drift correction of the managed keys; a VM removed from
+# the inventory keeps its job and resource until 99-teardown or by hand.
+#
+# Written against the Proxmox VE 9 API, where HA groups became rules (/cluster/ha/rules,
+# type node-affinity). Read the --check --diff output before the first real run.
+
+- name: Pick the replicated VMs
+  ansible.builtin.set_fact:
+    _ha_vms: >-
+      {%- set out = [] -%}
+      {%- for h in groups['vm'] | default([]) if hostvars[h].vm_replicate_to is defined -%}
+      {%-   set v = hostvars[h] -%}
+      {%-   set _ = out.append({'name': h, 'vmid': v.ansible_host.split('.')[-1] | int,
+                                'node': v.vm_node, 'target': v.vm_replicate_to}) -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Assert each target is another cluster node
+  ansible.builtin.assert:
+    that:
+      - item.target in groups['pve']
+      - item.target != item.node
+    fail_msg: "{{ item.name }}: vm_replicate_to {{ item.target }} must be a pve node other than {{ item.node }}."
+    quiet: true
+  loop: "{{ _ha_vms }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- replication --------------------------------------------------------------
+- name: Read the replication jobs
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/replication --output-format json
+  register: _repl
+  changed_when: false
+  check_mode: false
+
+- name: Index the jobs by id
+  ansible.builtin.set_fact:
+    _repl_jobs: "{{ dict((_repl.stdout | from_json) | map(attribute='id') | zip(_repl.stdout | from_json)) }}"
+
+# Job id <vmid>-0: the first (and only) job of the guest.
+- name: Create the replication jobs
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/replication
+      - --id
+      - "{{ item.vmid }}-0"
+      - --type
+      - local
+      - --target
+      - "{{ item.target }}"
+      - --schedule
+      - "{{ pve_ha_replication_schedule }}"
+      - --rate
+      - "{{ pve_ha_replication_rate | string }}"
+      - --comment
+      - "{{ item.name }} (Ansible)"
+  loop: "{{ _ha_vms | rejectattr('vmid', 'in', _repl_jobs.keys() | map('regex_replace', '-0$', '') | map('int') | list) | list }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.target }}"
+  changed_when: true
+
+- name: Correct drifted replication jobs
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - set
+      - /cluster/replication/{{ item.vmid }}-0
+      - --schedule
+      - "{{ pve_ha_replication_schedule }}"
+      - --rate
+      - "{{ pve_ha_replication_rate | string }}"
+  vars:
+    _now: "{{ _repl_jobs[item.vmid ~ '-0'] | default({}) }}"
+  loop: "{{ _ha_vms }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - _now | length > 0
+    - (_now.schedule | default('') != pve_ha_replication_schedule) or
+      ((_now.rate | default(0) | float) != (pve_ha_replication_rate | float))
+  changed_when: true
+
+# The target of an existing job can't be changed in place; say so instead of deleting a replica.
+- name: Assert no job points at another target
+  ansible.builtin.assert:
+    that: _repl_jobs[item.vmid ~ '-0'].target == item.target
+    fail_msg: >-
+      Job {{ item.vmid }}-0 replicates {{ item.name }} to {{ _repl_jobs[item.vmid ~ '-0'].target }},
+      the inventory says {{ item.target }}. Remove it with: pvesr delete {{ item.vmid }}-0, then re-run.
+    quiet: true
+  loop: "{{ _ha_vms }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: (item.vmid ~ '-0') in _repl_jobs
+
+# --- HA resources -------------------------------------------------------------
+- name: Read the HA resources
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/ha/resources --output-format json
+  register: _ha_res
+  changed_when: false
+  check_mode: false
+
+- name: Add the HA resources
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/ha/resources
+      - --sid
+      - vm:{{ item.vmid }}
+      - --state
+      - "{{ pve_ha_state }}"
+      - --max_restart
+      - "{{ pve_ha_max_restart | string }}"
+      - --max_relocate
+      - "{{ pve_ha_max_relocate | string }}"
+      - --comment
+      - "{{ item.name }} (Ansible)"
+  loop: "{{ _ha_vms | rejectattr('vmid', 'in', _ha_vmids) | list }}"
+  vars:
+    _ha_vmids: "{{ (_ha_res.stdout | from_json) | map(attribute='sid') | map('regex_replace', '^vm:', '') | map('int') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: true
+
+# --- node affinity ------------------------------------------------------------
+- name: Read the HA rules
+  ansible.builtin.command:
+    cmd: pvesh get /cluster/ha/rules --output-format json
+  register: _ha_rules
+  changed_when: false
+  check_mode: false
+
+- name: Index the rules by id
+  ansible.builtin.set_fact:
+    _ha_rule_ids: "{{ (_ha_rules.stdout | from_json) | map(attribute='rule') | list }}"
+
+- name: Add the node-affinity rules
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/ha/rules
+      - --rule
+      - prefer-{{ item.name }}
+      - --type
+      - node-affinity
+      - --resources
+      - vm:{{ item.vmid }}
+      - --nodes
+      - "{{ item.node }}:{{ pve_ha_priority }},{{ item.target }}:{{ pve_ha_priority | int - 1 }}"
+      - --strict
+      - "0"
+      - --comment
+      - "{{ item.name }} prefers {{ item.node }}, then its replica on {{ item.target }} (Ansible)"
+  loop: "{{ _ha_vms | rejectattr('name', 'in', _ha_rule_ids | map('regex_replace', '^prefer-', '') | list) | list }}"
+  loop_control:
+    label: "{{ item.name }}: {{ item.node }} > {{ item.target }}"
+  changed_when: true
