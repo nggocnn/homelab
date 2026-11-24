@@ -1,11 +1,15 @@
 ---
+# lineinfile, not ansible.posix.authorized_key: that module chowns the file to root:root after
+# writing it, and on a clustered node the file lives on /etc/pve (pmxcfs), which allows only
+# root:www-data - "Operation not permitted" after the write. lineinfile writes through the
+# symlink (atomic_move resolves it) and leaves ownership alone. Matched on the key blob, so
+# a key already there under another comment or options is updated, not added twice. No `mode`:
+# on the symlink it reads as 0777 and reports a change every run. The installer creates the file.
 - name: Authorise root SSH keys
-  ansible.posix.authorized_key:
-    user: root
-    key: "{{ item }}"
-    state: present
-    exclusive: false
-    follow: true # a clustered node's file is a symlink into /etc/pve; replacing it splits the node off
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/authorized_keys
+    search_string: "{{ item | regex_search('AAAA[0-9A-Za-z+/=]+') }}"
+    line: "{{ item }}"
   loop: "{{ pve_root_authorized_keys }}"
   loop_control:
     label: "{{ item.split() | last }}"
