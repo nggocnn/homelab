@@ -11,9 +11,11 @@ set -eu
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
 image="${HOMELAB_ANSIBLE_IMAGE:-homelab-ansible}"
 
-if ! docker image inspect "$image" >/dev/null 2>&1; then
-    docker build -t "$image" "$repo/infra/ansible/tools"
-fi
+# Built on every call: cached layers make it near-instant, and a changed Dockerfile or host uid
+# rebuilds without anyone remembering to.
+docker build -q -t "$image" \
+    --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
+    "$repo/infra/ansible/tools" >/dev/null
 
 # "$@" is the command; the image goes in front of it, then each option in front of that.
 set -- "$image" "$@"
