@@ -22,9 +22,38 @@ ansible-galaxy collection install -r requirements.yml   # into ./collections (gi
 ansible pve -m ping                       # expect SUCCESS from every node
 ```
 
+Or with Docker only: `tools/ansible.sh` runs any command in a pinned controller image
+(`tools/Dockerfile`, built on first use) with the repo, `~/.ssh`, the vault password and the
+ssh-agent mounted:
+
+```bash
+tools/ansible.sh ansible-galaxy collection install -r requirements.yml
+tools/ansible.sh ansible pve -m ping
+tools/ansible.sh ansible-playbook playbooks/00-host.yml --check --diff
+```
+
 `requirements.yml` pins `ansible.posix >= 2.2.2`. The apt package's 2.1.0 prints a `to_native` deprecation warning.
 
 Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and a 7-day certificate - see [SSH access](#ssh-access).
+
+### Secrets
+
+The password, token and hash files in this directory are encrypted with ansible-vault and
+committed, so git is their backup. `lookup('file')` and `copy` decrypt them on the fly; the
+password comes from `~/.config/homelab/vault-pass` or a prompt (`tools/vault-pass.sh`).
+
+```bash
+install -d -m 700 ~/.config/homelab
+(umask 077; read -rsp 'Vault password: ' p && printf '%s\n' "$p" > ~/.config/homelab/vault-pass; unset p)
+tools/vault-secrets.sh                 # encrypt every secret file not yet encrypted
+tools/vault-secrets.sh --check         # exit 1 on any plaintext one - also the pre-commit hook
+ln -s ../../infra/ansible/tools/vault-secrets.sh ../../.git/hooks/pre-commit-vault   # see below
+ansible-vault edit vm-password         # change one
+```
+
+What git can't hold has to be kept by hand, **in a password manager and on an offline USB stick**:
+the vault password, `~/.ssh/ca/user_ca` + `host_ca` and their passphrases, and the break-glass key.
+Losing them once (2026-11) meant regaining the nodes through the web UI's root shell.
 
 ---
 
@@ -35,20 +64,21 @@ Ansible logs in everywhere with one key, `~/.ssh/ansible.nggocnn.internal`, and 
 | `playbooks/00-host.yml` | Makes every first-boot setting permanent. Idempotent - a second run must report `changed=0`. |
 | `playbooks/01-cluster.yml` | Forms the cluster **`pve`**, created on **`pve-01`**, and checks node-to-node SSH. Then the pools, and `pve_vip` (`10.10.10.10`) floating across the nodes, so the web UI and the API have one address - each node's `pveproxy` certificate is reissued from the cluster CA carrying that name. No-op once done. |
 | `playbooks/02-images.yml` | Puts `pve_lxc_templates`, `pve_isos` and `pve_cloud_images` (to `local:import`) on every node's `local` storage, or only on an entry's `nodes` - downloaded on the node, or pushed from local machine with `src:`. Additive, never deletes. |
-| `playbooks/03-storage.yml` | The `tank` ZFS pool on each node's `pve_tank_disk` (create-only; a disk that is not blank is refused, never wiped), with datasets in place of partitions: `tank/backup` (200 GB quota) as the `backup` storage, and `tank/nas` for `nas-01`. Then the `daily` backup job: every guest at 03:00, snapshot mode, zstd, keeping 7 daily, 4 weekly and 3 monthly. Its hook stops Pulse for the length of the job, because Pulse's guest-agent reads can collide with a snapshot's filesystem freeze. |
+| `playbooks/03-storage.yml` | The `tank` ZFS pool on each node's `pve_tank_disk`: an existing pool is imported (after a reinstall without `zpool export`, only with `-e pve_tank_force_import=true`), a blank disk gets a new one, any other disk is refused, never wiped; with datasets in place of partitions: `tank/backup` (200 GB quota) as the `backup` storage, and `tank/nas` for `nas-01`. Then the `daily` backup job: every guest at 03:00, snapshot mode, zstd, keeping 7 daily, 4 weekly and 3 monthly. Its hook stops Pulse for the length of the job, because Pulse's guest-agent reads can collide with a snapshot's filesystem freeze. |
 | `playbooks/10-cloudflared.yml` | Creates its containers like every playbook from here on: `pve_lxc` (create-only, on `lxc_node`) and `guest_ssh` (the user CA as the only authorised key, a host certificate, key-only sshd), then the service. Here `apt_packages` (base + extras, `-e apt_upgrade=true` to upgrade), then cloudflared on `cloudflared-01`. Tunnel token added by hand. |
 | `playbooks/11-tailscale.yml` | `apt_packages`, then Tailscale on `tailscale-01`, advertising `pve_subnet_cidr` once logged in (`tailscale up` by hand, re-run, approve the route in the admin console). Add a second router and Tailscale routes through one at a time and fails over to the other. |
 | `playbooks/12-bastion.yml` | `bastion-01`: the one way in over SSH. `nggocnn` with a password (console, sudo), and a guest key whose 30-day certificate reaches the VMs and the non-edge containers, from the bastion's address only. Also signs the laptop's personal key. No node access. Re-run to renew, or for a new guest's `~/.ssh/config` alias. |
 | `playbooks/13-dns.yml` | `dns-01`: Pi-hole on `:53` with AdGuard on `127.0.0.1:5353` as its only upstream, and keepalived floating `dns_vip` (`10.10.10.51`) across the `dns` group. Config comes from Ansible - **a change made in either web UI is overwritten on the next run**. |
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers created so far (`pct set`) at `lxc_resolvers`. Until 13 has run, creation uses the gateway; containers created later start on `dns_vip`. |
-| `playbooks/15-netbird.yml` | `apt_packages`, then NetBird on `netbird-01`, logged in to NetBird Cloud with the setup key in `netbird-setup-key`, as a trial beside Tailscale. The container also takes an IPv6 address (SLAAC), so a peer with IPv6 connects directly instead of through NetBird's relays. The subnet route, the access policy and DNS are set in the NetBird dashboard: Networks → resource `pve_subnet_cidr` → routing peer `netbird-01`. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node and VM (per-container stats on Docker hosts), and alerts to Telegram. Host hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
 | `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
 | `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
 | `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, plus `Datastore.AllocateSpace` and `VM.Backup` on `/storage/backup` and `/vms` so it can list backups, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Polls every 30 s and rolls up every 30 min, to keep its SQLite writes off the NVMe. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
 | `playbooks/25-nas.yml` | `nas-01`: Samba for Windows on `tank/nas`, bind-mounted from the node, so the data is not in the container's backups. SMB 2.1 and up for compatibility, every session signed and SMB3 ones encrypted, one user (`nggocnn`, password from `samba-password`), the LAN only, and `wsdd2` so the share shows under Network. Needs 03. Then re-run 13 and 21 for its DNS record and monitoring. |
-| `playbooks/30-docker.yml` | `docker-01`: Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
+| `playbooks/30-docker.yml` | The `docker` group, `docker-01` (pve-01) and `home-01` (pve-02, sized in `group_vars/home.yml`): Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
+| `playbooks/31-stacks.yml` | Docker Compose stacks: each host's `compose_stacks` from `stacks/<name>/compose.yaml`, with an optional vault-encrypted `stacks/<name>/env` decrypted to `.env`, into `/opt/stacks/<name>`, then `docker compose up -d`. `home-01` runs `stacks/home`: Home Assistant Container and ESPHome on host networking, Bluetooth through ESPHome proxies on ESP32s. `-e compose_pull=true` updates the images. |
+| `playbooks/32-ha.yml` | Storage replication and Proxmox HA for every VM with `vm_replicate_to`: a ZFS replica on that node every 15 min (50 MB/s cap), an HA resource, and a non-strict node-affinity rule preferring `vm_node`, then the replica. Needs the three nodes and ZFS storage (`answer.toml`). After 30, and again for a new replicated VM. |
 | `playbooks/90-upgrade.yml` | `apt dist-upgrade` on the nodes, then every container and VM, one host at a time so redundant members never restart together. Never reboots unless `-e upgrade_reboot=true`, which reboots the nodes with a newer kernel one by one, waiting for quorum. Run any time, not part of the build order. |
 | `playbooks/99-teardown.yml` | Back to the state after `01-cluster.yml`, after a typed confirmation: every guest, pool, template, ISO, disk image and snippet, the cluster VIP and its certificate, the node agents (Beszel, Pulse, exporters, Alloy) and the `prometheus@pve` and `pulse@pve` API users and Pulse's `PulseBackupRead` role. Node DNS goes back to the gateway and the guests' host keys are forgotten. Backups stay, and so does `tank` with the NAS data. Rebuild from `01-cluster.yml`. |
 
@@ -59,7 +89,7 @@ ansible-playbook playbooks/00-host.yml                    # first run
 ansible-playbook playbooks/00-host.yml                    # re-run: changed=0
 ansible-playbook playbooks/01-cluster.yml
 ansible-playbook playbooks/02-images.yml
-ansible-playbook playbooks/03-storage.yml
+ansible-playbook playbooks/03-storage.yml                # + -e pve_tank_force_import=true once after a rebuild
 ansible-playbook playbooks/10-cloudflared.yml
 export TS_API_KEY=tskey-api-...                            # optional, see below
 ansible-playbook playbooks/11-tailscale.yml
@@ -69,8 +99,6 @@ ansible-playbook playbooks/12-bastion.yml
 (umask 077; read -rsp 'Pi-hole password: ' p && printf '%s' "$p" > pihole-password; unset p)
 ansible-playbook playbooks/13-dns.yml
 ansible-playbook playbooks/14-dns-clients.yml
-(umask 077; read -rsp 'NetBird setup key: ' k && printf '%s' "$k" > netbird-setup-key; unset k)   # one-off, gitignored
-ansible-playbook playbooks/15-netbird.yml
 (umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)   # both gitignored
 (umask 077; read -rsp 'Telegram bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
 read -rp 'Telegram chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c   # message the bot, then .../getUpdates
@@ -86,6 +114,8 @@ ansible-playbook playbooks/24-pulse.yml
 ansible-playbook playbooks/25-nas.yml
 (umask 077; read -rsp 'VM password: ' p && printf '%s' "$p" > vm-password; unset p)   # nggocnn on VMs, gitignored
 ansible-playbook playbooks/30-docker.yml
+ansible-playbook playbooks/31-stacks.yml
+ansible-playbook playbooks/32-ha.yml
 
 ansible-playbook playbooks/90-upgrade.yml                # any time: upgrade every node and guest
 ansible-playbook playbooks/99-teardown.yml               # back to after 01, asks first
@@ -109,7 +139,7 @@ A host accepts a certificate that carries its `ssh_principal`:
 | --- | --- | --- |
 | `pve-root` | nodes | root |
 | `lxc-root` | containers | root |
-| `edge-root` | `tailscale`, `cloudflared`, `netbird` | root |
+| `edge-root` | `tailscale`, `cloudflared` | root |
 | `vm-nggocnn` | VMs | nggocnn |
 | `bastion` | `bastion-01` | nggocnn |
 
@@ -160,8 +190,8 @@ and nothing else - the rest of the host belongs to Beszel.
 ### Cluster VIP
 
 `10.10.10.10` floats across the nodes: `https://pve.nggocnn.internal:8006` reaches the
-cluster whichever node is up. With `pve-01` the only node, the VIP stays on it and goes down with
-it. It still earns its place: the address and the certificate don't change when a node joins. Proxmox has no management address of its own and needs none to be
+cluster whichever node is up: pve-01 holds it at priority 150, then pve-02 (100), then pve-03 (50).
+With three nodes measured at `c8b8cf9`: a reboot cost under 1.5 s, a stopped `pveproxy` 6.4 s. Proxmox has no management address of its own and needs none to be
 cluster-wide - `pveproxy` forwards API calls, the node shell and noVNC to whichever node owns the
 resource, and the session cookie is signed cluster-wide, so a session survives the address moving.
 
@@ -202,8 +232,8 @@ ansible-playbook playbooks/14-dns-clients.yml   # nodes now, containers on their
 
 ### DNS failover
 
-With `dns-01` the only member, it holds `dns_vip` for good, and a dead resolver is an outage
-rather than a failover. The checks and weights are set for when a second member joins. To
+`dns-01`, `dns-02` and `dns-03`, one per node, share `dns_vip` at priorities 150 / 100 / 50; a failed
+check moves it (2.5 s for a stopped container, 5.9 s for a stopped `pihole-FTL`, at `c8b8cf9`). To
 probe the DNS VIP from a node at 5/s, read the exit status, not the output, because
 `dig +short` prints `communications error` to stdout and a non-empty result is not a success:
 
@@ -236,8 +266,8 @@ approve in the admin console. Unset, approve by hand.
 -e tailscale_approve_routes=false       # advertise only, approve by hand
 ```
 
-With one router, rebooting `pve-01` takes the route down until `tailscale-01` is back. Once
-there is a second router, drain the first before a reboot. Withdrawing the route hands over
+With two routers, `tailscale-01` on pve-01 and `tailscale-02` on pve-02, drain the one on a node
+before rebooting that node. Withdrawing the route hands over
 with no packet loss, where losing the container costs about 17 s. The procedure is in this
 file at `c8b8cf9` on `main`.
 

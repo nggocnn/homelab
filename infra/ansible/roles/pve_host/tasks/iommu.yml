@@ -28,7 +28,7 @@
   when: _systemd_boot.stat.exists
   notify: refresh proxmox boot
 
-# --- GRUB (ext4 + LVM root, which is what these nodes run) ------------------
+# --- GRUB (ext4 + LVM root; the nodes now install on ZFS, so systemd-boot above) -
 - name: Read /etc/default/grub
   ansible.builtin.slurp:
     src: /etc/default/grub

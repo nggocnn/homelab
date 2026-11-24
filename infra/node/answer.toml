@@ -42,11 +42,16 @@ dns     = "10.10.10.1"          # gateway; 14-dns-clients.yml moves it to dns_vi
 # Exactly one Ethernet port per P330, so a wildcard is safe and name-agnostic.
 filter.ID_NET_NAME = "en*"
 
+# ZFS on the single NVMe: storage `local-zfs`, which storage replication and Proxmox HA
+# need on every node. raid0 = one disk, no redundancy. The tank HDD on pve-01 is not in
+# disk-list, so the installer never touches it. No ARC limit here: the installer caps it
+# at 10% of RAM per machine (wiki 044). No swap: ZFS installs leave it out.
 [disk-setup]
-filesystem   = "ext4"
+filesystem   = "zfs"
 disk-list    = ["nvme0n1"]
-lvm.swapsize = 8                # GiB. 0 disables swap entirely.
-lvm.maxroot  = 50               # GiB. Legal on the 256GB nodes too (cap is hdsize/4).
+zfs.raid     = "raid0"
+zfs.ashift   = 12
+zfs.compress = "lz4"
 
 [first-boot]
 source   = "from-iso"

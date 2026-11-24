@@ -1,7 +1,7 @@
 # homelab
 
-A single-node Proxmox VE cluster, built unattended from a USB stick, plus first boot script.
-The node is the one member of cluster `pve`, so adding a node later is a join, not a rebuild.
+A three-node Proxmox VE cluster `pve` on Lenovo P330 Tiny (pve-01..03), built unattended from a USB stick
+with a first-boot script, on ZFS so VMs can be replicated and fail over between nodes.
 
 | Directory | What it does |
 | --- | --- |

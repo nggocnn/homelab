@@ -3,6 +3,10 @@
 # without one is skipped.
 pve_tank_pool: tank
 
+# A pool on pve_tank_disk that is not imported is imported. One that was never exported (the
+# node was reinstalled without `zpool export`) needs -f: -e pve_tank_force_import=true, once.
+pve_tank_force_import: false
+
 # Datasets in place of partitions: they share the pool's free space, and a size is a
 # quota changed with zfs set rather than a boundary fixed at creation.
 pve_tank_datasets:
