@@ -1,8 +1,10 @@
 ---
 # Imported by the playbooks that reach the bastion. It is managed with `pct exec` through
-# its node, over paramiko - which ignores @cert-authority lines, so the node's own key has
+# its node, over paramiko - which can't use @cert-authority lines, so the node's own key has
 # to be in known_hosts. Read over the OpenSSH connection, which the host certificate has
-# already verified.
+# already verified. The CA line itself lives in ~/.ssh/known_hosts2: OpenSSH reads that file
+# by default, paramiko never does, and paramiko 3.5+ aborts with "Invalid host key" on a
+# @cert-authority line in ~/.ssh/known_hosts.
 - name: Bastion node host key
   hosts: bastion
   gather_facts: false
