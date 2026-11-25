@@ -2,7 +2,7 @@
 # --- vm ---------------------------------------------------------------------
 vm_pool: container-platform
 vm_cores: 4
-vm_memory_mb: 8192
+vm_memory_mb: 10240   # fits pve-03 (15.5 GB) beside its own guests, so HA can fail it over there
 vm_disk_gb: 64
 
 # --- monitoring ---------------------------------------------------------------
