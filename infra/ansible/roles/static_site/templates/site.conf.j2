@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+server {
+    listen {{ static_site_port }} default_server;
+    listen [::]:{{ static_site_port }} default_server;
+    server_name _;
+
+    root {{ static_site_root }};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /assets/ {
+        expires 1h;
+    }
+}

@@ -1,0 +1,16 @@
+---
+# study-01: the ccdv-f study pages, served by nginx on :80. Re-run after editing the pages.
+#
+#   ansible-playbook playbooks/26-study.yml
+#   tools/ansible.sh cannot see outside this repo - see static_site_src in group_vars/study.yml.
+- name: Controller certificate
+  ansible.builtin.import_playbook: _ssh-cert.yml
+
+- name: Study site
+  hosts: study
+  gather_facts: false
+  roles:
+    - pve_lxc
+    - guest_ssh
+    - apt_packages
+    - static_site

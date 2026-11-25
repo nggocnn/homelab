@@ -1,0 +1,14 @@
+---
+# --- container ----------------------------------------------------------------
+lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml
+lxc_pool: infrastructure
+lxc_memory_mb: 256
+lxc_disk_gb: 4
+
+# --- site ---------------------------------------------------------------------
+# The ccdv-f study pages, outside this repo. Under tools/ansible.sh, mount the folder and pass
+# its path inside the container instead: -v <study>:/site:ro ... -e static_site_src=/site
+static_site_src: "{{ playbook_dir }}/../../../../r4d0m-sh1t-i-c0ll3ct3d/resources/claude-certs/ccdv-f/study"
+# Pages and what they load. Left out: _screens (96 MB of screenshots), tests, NEXT.md.
+static_site_files: ["*.html"]
+static_site_dirs: [assets]

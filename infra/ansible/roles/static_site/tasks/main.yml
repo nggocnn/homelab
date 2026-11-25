@@ -1,0 +1,68 @@
+---
+- name: Assert the source folder exists
+  ansible.builtin.assert:
+    that: (static_site_src | length > 0) and (static_site_src ~ '/index.html') is file
+    fail_msg: "No index.html in static_site_src={{ static_site_src }}"
+    quiet: true
+  delegate_to: localhost
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create {{ static_site_root }}
+  ansible.builtin.file:
+    path: "{{ static_site_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy the pages
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ static_site_root }}/"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ query('ansible.builtin.fileglob', *(static_site_files | map('regex_replace', '^', static_site_src ~ '/'))) }}"
+  loop_control:
+    label: "{{ item | basename }}"
+
+- name: Copy the folders
+  ansible.builtin.copy:
+    src: "{{ static_site_src }}/{{ item }}"
+    dest: "{{ static_site_root }}/"
+    owner: root
+    group: root
+    directory_mode: "0755"
+    mode: "0644"
+  loop: "{{ static_site_dirs }}"
+
+- name: Write the site config
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: /etc/nginx/sites-available/site
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+
+- name: Enable the site, disable the default
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-enabled/{{ item.name }}"
+    src: "{{ item.src | default(omit) }}"
+    state: "{{ item.state }}"
+  loop:
+    - { name: site, src: /etc/nginx/sites-available/site, state: link }
+    - { name: default, state: absent }
+  notify: reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
