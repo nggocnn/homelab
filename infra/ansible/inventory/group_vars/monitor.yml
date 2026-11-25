@@ -1,7 +1,0 @@
----
-# --- container ----------------------------------------------------------------
-lxc_nameserver: "{{ lxc_resolvers }}"   # created after 13-dns.yml
-lxc_pool: infrastructure
-lxc_cores: 2
-lxc_memory_mb: 2048
-lxc_disk_gb: 32   # 90 days of series, at a 15 s scrape

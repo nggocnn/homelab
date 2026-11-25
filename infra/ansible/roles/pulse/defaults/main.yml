@@ -13,7 +13,7 @@ pulse_password_file: "{{ playbook_dir }}/../pulse-password"
 pulse_telemetry: false
 
 # Disk writes. At the default 10 s poll the SQLite history wrote ~9 GB a day, two thirds
-# of the node's NVMe writes. Prometheus and Beszel already watch the cluster closely, so
+# of the node's NVMe writes. Beszel already watches the hosts closely, so
 # Pulse polls slower and rolls up less often (docs/METRICS_HISTORY.md, "Disk Write Tuning").
 pulse_pve_polling_interval: 30s
 pulse_metrics_rollup_interval: 30m

@@ -1,6 +1,6 @@
 ---
 # Beszel: the hub on beszel-01, an agent on each node and VM, alerts to Telegram.
-# Standalone - nothing here depends on the Prometheus stack, or the other way round.
+# Standalone - nothing here depends on another monitoring tool, or the other way round.
 #
 #   (umask 077; read -rsp 'Beszel password: ' p && printf '%s' "$p" > beszel-password; unset p)
 #   (umask 077; read -rsp 'Bot token: ' t && printf '%s' "$t" > telegram-bot-token; unset t)
