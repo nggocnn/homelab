@@ -42,6 +42,40 @@
   failed_when: false
   check_mode: false
 
+# Updating = bumping pulse_version in group_vars/all.yml and re-running 24-pulse.yml. "Pulse
+# v6.9.0" -> 6.9.0, compared whole: a substring test would take 6.1.0 as installed under 16.1.0.
+- name: Note the installed and wanted versions
+  ansible.builtin.set_fact:
+    _pulse_have: "{{ _pulse_installed.stdout | default('') | regex_search('[0-9]+[.][0-9]+[.][0-9]+') | default('', true) }}"
+
+# A newer release may migrate the SQLite history and settings one way only.
+- name: Refuse a downgrade from {{ _pulse_have }} to {{ pulse_version }}
+  ansible.builtin.assert:
+    that: _pulse_have == '' or _pulse_have is version(pulse_version, '<=') or pulse_allow_downgrade | bool
+    fail_msg: >-
+      pulse-01 runs {{ _pulse_have }}, pulse_version is {{ pulse_version }}. A downgrade can't read
+      data a newer release migrated: restore {{ pulse_data_dir }}.pre-upgrade first, then re-run
+      with -e pulse_allow_downgrade=true.
+    quiet: true
+
+# Stopped first, so the SQLite files are copied consistently. One copy, of the last version
+# before the latest upgrade; the VERSION file inside says which.
+- name: Back up {{ pulse_data_dir }} before the upgrade
+  when: _pulse_have not in ['', pulse_version]
+  block:
+    - name: Stop pulse
+      ansible.builtin.systemd_service:
+        name: pulse
+        state: stopped
+
+    - name: Copy {{ pulse_data_dir }} to {{ pulse_data_dir }}.pre-upgrade
+      ansible.builtin.shell:
+        cmd: >-
+          rm -rf {{ pulse_data_dir }}.pre-upgrade &&
+          cp -a {{ pulse_data_dir }} {{ pulse_data_dir }}.pre-upgrade &&
+          echo {{ _pulse_have }} > {{ pulse_data_dir }}.pre-upgrade/VERSION
+      changed_when: true
+
 # 280 MB: the server serves the agent binaries of every platform from bin/.
 - name: Install Pulse {{ pulse_version }}
   ansible.builtin.unarchive:
@@ -50,7 +84,7 @@
     remote_src: true
     owner: root
     group: root
-  when: pulse_version not in _pulse_installed.stdout | default('')
+  when: _pulse_have != pulse_version
   notify: restart pulse
 
 - name: Write the login
@@ -90,6 +124,29 @@
   retries: 30
   delay: 2
   check_mode: false
+
+# Pulse checks GitHub for releases itself; this is where it's read, since nothing installs them
+# automatically.
+- name: Read the running version
+  ansible.builtin.uri:
+    url: http://127.0.0.1:{{ pulse_port }}/api/version
+  register: _pulse_running
+  check_mode: false
+
+- name: Assert {{ pulse_version }} is running
+  ansible.builtin.assert:
+    that: _pulse_running.json.version == pulse_version
+    fail_msg: "Pulse answers as {{ _pulse_running.json.version }}, expected {{ pulse_version }}. See journalctl -u pulse."
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Report a newer release
+  ansible.builtin.debug:
+    msg: >-
+      Pulse {{ _pulse_running.json.latestVersion }} is out ({{ pulse_version }} installed). Read
+      https://github.com/rcourtman/Pulse/releases, then set pulse_version in group_vars/all.yml
+      and re-run 24-pulse.yml.
+  when: _pulse_running.json.updateAvailable | default(false) | bool
 
 - name: Register the cluster
   ansible.builtin.import_tasks: pve.yml

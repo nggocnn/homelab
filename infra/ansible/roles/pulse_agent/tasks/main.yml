@@ -25,7 +25,7 @@
     mode: "0755"
   vars:
     _release: https://github.com/rcourtman/Pulse/releases/download/v{{ pulse_agent_version }}
-  when: pulse_agent_version not in _pulse_agent_installed.stdout | default('')
+  when: (_pulse_agent_installed.stdout | default('') | regex_search('[0-9]+[.][0-9]+[.][0-9]+') | default('', true)) != pulse_agent_version
   notify: restart pulse-agent
 
 - name: Create the state directory
