@@ -162,7 +162,7 @@ Host *.nggocnn.internal
 ```
 
 ```bash
-ansible localhost -m debug -a var=ssh_host_ca_line    # the one line ~/.ssh/known_hosts needs
+ansible localhost -m debug -a var=ssh_host_ca_line    # the one line ~/.ssh/known_hosts2 needs
 ssh root@dns-01.nggocnn.internal
 ```
 
@@ -266,7 +266,7 @@ approve in the admin console. Unset, approve by hand.
 -e tailscale_approve_routes=false       # advertise only, approve by hand
 ```
 
-With two routers, `tailscale-01` on pve-01 and `tailscale-02` on pve-02, drain the one on a node
+With a router on each node (`tailscale-01`, `-02`, `-03`), drain the one on a node
 before rebooting that node. Withdrawing the route hands over
 with no packet loss, where losing the container costs about 17 s. The procedure is in this
 file at `c8b8cf9` on `main`.
