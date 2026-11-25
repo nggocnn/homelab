@@ -20,6 +20,25 @@
     home: "{{ uptime_kuma_data_dir }}"
     create_home: true
 
+# The git module only ever clones here, never updates: on an existing shallow clone at a tag
+# it looks for refs/remotes/origin/HEAD, which such a clone lacks, and fails with "'NoneType'
+# object has no attribute 'startswith'" (ansible-core 2.20.11, 2026-11-25). So the tag is read
+# first, a checkout of another version is removed, and a fresh clone takes its place. The data
+# lives in {{ uptime_kuma_data_dir }}, not here.
+- name: Read the checked-out version
+  ansible.builtin.command:
+    cmd: git -C {{ uptime_kuma_dir }} describe --tags --exact-match
+  register: _kuma_tag
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Remove the checkout of another version
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_dir }}"
+    state: absent
+  when: _kuma_tag.rc == 0 and _kuma_tag.stdout != uptime_kuma_version
+
 - name: Clone Uptime Kuma {{ uptime_kuma_version }}
   ansible.builtin.git:
     repo: https://github.com/louislam/uptime-kuma.git
@@ -27,6 +46,7 @@
     version: "{{ uptime_kuma_version }}"
     depth: 1
   register: _kuma_clone
+  when: _kuma_tag.stdout | default('') != uptime_kuma_version
 
 # npm run setup, minus its git checkout: the clone above is already at the tag.
 - name: Install the dependencies
