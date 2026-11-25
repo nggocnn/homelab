@@ -27,10 +27,14 @@
       check_mode: false
       when: _tank.rc != 0
 
+    # A whole-line compare, not a regex: '\\b' in a block scalar reaches Jinja as two backslashes,
+    # a literal backslash in the regex, and the search never matched (03-storage, 2026-11-24:
+    # tank importable, not imported, and the backup storage then failed on an unmounted path).
     - name: Note whether {{ pve_tank_pool }} is on the disk
       ansible.builtin.set_fact:
         _tank_on_disk: >-
-          {{ _tank.rc != 0 and (_tank_importable.stdout | default('')) is search('pool: ' ~ pve_tank_pool ~ '\\b') }}
+          {{ _tank.rc != 0 and (_tank_importable.stdout_lines | default([]) | map('trim')
+             | select('equalto', 'pool: ' ~ pve_tank_pool) | list | length > 0) }}
 
     # A pool not exported before the reinstall was last used by another host id, and needs -f.
     # Only with -e pve_tank_force_import=true: forcing a pool that another live host has imported
@@ -59,7 +63,8 @@
     # be gone in the normal case, the pool already imported.
     - name: Note whether {{ pve_tank_pool }} is imported now
       ansible.builtin.set_fact:
-        _tank_present: "{{ _tank.rc == 0 or (_tank_import.rc | default(1)) == 0 }}"
+        # `is not skipped`: in --check the command module skips the import yet reports rc 0.
+        _tank_present: "{{ _tank.rc == 0 or (_tank_import is not skipped and (_tank_import.rc | default(1)) == 0) }}"
 
     # Never for a disk that holds the pool, imported or not - also in --check, where the import
     # above is skipped and the pool still looks absent.
