@@ -14,8 +14,9 @@ pve_tank_datasets:
   nas: {}                   # bind-mounted into nas-01, the rest of the disk
 
 # --- backups ------------------------------------------------------------------
-# Proxmox storage on tank/backup. is_mountpoint: if the pool is not imported, backups
-# fail rather than fill the root filesystem.
+# Proxmox storage on tank/backup, an NFS export from the tank node mounted on every node.
+# The export has `mp`: if the pool is not imported, nothing is exported and backups fail
+# rather than fill a root filesystem.
 pve_backup_storage: backup
 
 # One job for every guest. Retention lives on the job, not the storage.

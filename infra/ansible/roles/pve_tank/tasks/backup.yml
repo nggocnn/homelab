@@ -1,7 +1,58 @@
 ---
-# The backup storage on tank/backup and the daily job. storage.cfg and jobs.cfg are
-# cluster-wide, so those are applied once; the hook is a file on every node with a pool.
+# The backup storage and the daily job. tank lives on one node, which exports tank/backup over
+# NFS to every node, itself included: one `nfs` storage and one job back up every guest
+# wherever it runs. storage.cfg and jobs.cfg are cluster-wide, so those are applied once.
 
+# --- NFS export, on the node with the pool -------------------------------------------------
+- name: Export tank/backup
+  when: pve_tank_disk is defined
+  block:
+    - name: Install the NFS server
+      ansible.builtin.apt:
+        name: nfs-kernel-server
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      register: _nfs_pkg
+
+    # Not created by the package; exportfs reads it when it exists.
+    - name: Create /etc/exports.d
+      ansible.builtin.file:
+        path: /etc/exports.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Node addresses only, root kept as root (vzdump writes as root). `mp`: exported only while
+    # tank/backup is mounted, so an unimported pool never exports the empty folder beneath it.
+    - name: Write /etc/exports.d/pve-backup.exports
+      ansible.builtin.copy:
+        dest: /etc/exports.d/pve-backup.exports
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible (homelab/infra/ansible) - do not edit by hand
+          /{{ pve_tank_pool }}/backup {% for h in groups['pve'] %}{{ hostvars[h].ansible_host }}(rw,sync,no_subtree_check,no_root_squash,mp) {% endfor %}
+
+      register: _exports
+
+    # In --check a first install is only simulated, so the unit doesn't exist yet.
+    - name: Enable and start nfs-server
+      ansible.builtin.systemd_service:
+        name: nfs-server
+        enabled: true
+        state: started
+      when: not (ansible_check_mode and _nfs_pkg is changed)
+
+    - name: Re-export
+      ansible.builtin.command:
+        cmd: exportfs -ra
+      when: _exports is changed
+
+# Every node backs up its own guests, so every node needs the hook. It pauses Pulse only on the
+# node that runs it.
 - name: Install the backup hook
   ansible.builtin.template:
     src: vzdump-hook.j2
@@ -9,7 +60,6 @@
     owner: root
     group: root
     mode: "0755"
-  when: pve_tank_disk is defined
 
 - name: Storage and job
   run_once: true
@@ -28,15 +78,35 @@
       changed_when: false
       check_mode: false
 
+    - name: Assert one node holds tank
+      ansible.builtin.assert:
+        that: _tank_nodes | length == 1
+        fail_msg: "tank/backup is exported from one node; found pve_tank_disk on {{ _tank_nodes | join(', ') }}."
+        quiet: true
+
+    # Until 2026-11-25 this was a `dir` storage on the tank node only, and the job failed on the
+    # other nodes ("storage 'backup' is not available on node 'pve-02'"). Removing a storage
+    # leaves its files; the nfs one of the same name mounts the same folder, backups included.
+    - name: Replace the old dir storage
+      ansible.builtin.command:
+        cmd: pvesm remove {{ pve_backup_storage }}
+      when: _bk.type | default('') == 'dir'
+      vars:
+        _bk: "{{ _storages.stdout | from_json | selectattr('storage', 'equalto', pve_backup_storage) | first | default({}) }}"
+      register: _bk_removed
+
     - name: Add the {{ pve_backup_storage }} storage
       ansible.builtin.command:
         cmd: >-
-          pvesm add dir {{ pve_backup_storage }}
-          --path /{{ pve_tank_pool }}/backup
+          pvesm add nfs {{ pve_backup_storage }}
+          --server {{ hostvars[_tank_nodes[0]].ansible_host }}
+          --export /{{ pve_tank_pool }}/backup
           --content backup
-          --is_mountpoint yes
-          --nodes {{ _tank_nodes | join(',') }}
-      when: pve_backup_storage not in (_storages.stdout | from_json | map(attribute='storage'))
+          --options vers=4.2
+          --nodes {{ groups['pve'] | join(',') }}
+      when: >-
+        _bk_removed is changed or
+        pve_backup_storage not in (_storages.stdout | from_json | map(attribute='storage'))
       changed_when: true
 
     - name: List the backup jobs
