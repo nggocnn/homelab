@@ -160,3 +160,66 @@
         port: 22
         timeout: 120
       delegate_to: localhost
+
+# --- retire cloud-init ----------------------------------------------------------
+# Cloud-init is only for the first boot. Afterwards its drive just blocks failback: replication
+# skips it, so after an HA recovery the stale copy on the old node makes every migration back
+# fail with "volume 'rpool/data/vm-<id>-cloudinit' already exists" (failover test 2026-11-25).
+# Disabled in the guest first, so a boot without the drive doesn't look like a new instance
+# (fallback DHCP, new SSH host keys); then the drive and its volume are removed.
+- name: Retire cloud-init on {{ inventory_hostname }}
+  when: _create is changed or _vm.status | default('') == 'running'
+  delegate_to: "{{ _vm.node | default(vm_node) }}"
+  block:
+    - name: Look for the cloud-init drive
+      ansible.builtin.shell:
+        cmd: qm config {{ vm_vmid }} | grep -E '^ide2:.*cloudinit' || true
+      register: _ci_drive
+      changed_when: false
+      check_mode: false
+
+    # rc 2 is "done, with recoverable errors" (a deprecation warning is enough for it).
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command:
+        cmd: qm guest exec {{ vm_vmid }} --timeout 1800 -- cloud-init status --wait
+      register: _ci_status
+      changed_when: false
+      failed_when: (_ci_status.stdout | from_json).exitcode | default(1) not in [0, 2]
+      when: _ci_drive.stdout | length > 0
+
+    - name: Disable cloud-init in the guest
+      ansible.builtin.command:
+        cmd: qm guest exec {{ vm_vmid }} -- touch /etc/cloud/cloud-init.disabled
+      register: _ci_disable
+      failed_when: (_ci_disable.stdout | from_json).exitcode | default(1) != 0
+      when: _ci_drive.stdout | length > 0
+
+    - name: Remove the cloud-init drive
+      ansible.builtin.command:
+        cmd: qm set {{ vm_vmid }} --delete ide2
+      when: _ci_drive.stdout | length > 0
+
+    # On a running VM the removal stays pending, and the volume busy, until QEMU restarts.
+    - name: Restart {{ inventory_hostname }} so the removal applies
+      ansible.builtin.command:
+        cmd: qm reboot {{ vm_vmid }} --timeout 300
+      when: _ci_drive.stdout | length > 0
+
+    - name: Wait for the guest agent after the restart
+      ansible.builtin.command:
+        cmd: qm agent {{ vm_vmid }} ping
+      register: _agent_again
+      until: _agent_again.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+      when: _ci_drive.stdout | length > 0
+
+    # Migration copies every vm-<id>-* volume on the node, an orphan included.
+    - name: Free a leftover cloud-init volume
+      ansible.builtin.shell:
+        cmd: >-
+          if pvesm list {{ vm_storage }} --vmid {{ vm_vmid }} | grep -q 'vm-{{ vm_vmid }}-cloudinit';
+          then pvesm free {{ vm_storage }}:vm-{{ vm_vmid }}-cloudinit && echo freed; fi
+      register: _ci_free
+      changed_when: "'freed' in _ci_free.stdout"
