@@ -1,5 +1,6 @@
 ---
-pulse_version: "6.6.0"
+# pulse_version: group_vars/all.yml, shared with pulse_agent on the nodes.
+pulse_allow_downgrade: false   # see the downgrade check in tasks/main.yml
 pulse_dir: /opt/pulse
 pulse_data_dir: /etc/pulse   # settings, the encrypted node credentials and the SQLite history
 pulse_port: 7655

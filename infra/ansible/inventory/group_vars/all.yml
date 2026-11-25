@@ -44,3 +44,8 @@ ssh_certs:
 
 # Public keys refused everywhere, whatever certificate they carry. Then re-run the host's playbook.
 ssh_revoked_keys: []
+
+# --- pulse ------------------------------------------------------------------
+# The server on pulse-01 and the agents on the nodes, released together. Pinned: neither updates
+# itself. Bump here and re-run 24-pulse.yml (release notes: github.com/rcourtman/Pulse/releases).
+pulse_version: "6.9.0"

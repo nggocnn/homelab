@@ -5,6 +5,10 @@
 #
 #   (umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)
 #   ansible-playbook playbooks/24-pulse.yml
+#
+# Update: set pulse_version in group_vars/all.yml, then re-run. The server's data is copied to
+# /etc/pulse.pre-upgrade first, the agents follow the same version, and the run fails unless the
+# new version answers. A run with nothing to do says when a newer release is out.
 - name: Controller certificate
   ansible.builtin.import_playbook: _ssh-cert.yml
 
