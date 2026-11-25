@@ -1,8 +1,13 @@
 ---
-# Storage replication and Proxmox HA for the VMs with vm_replicate_to (inventory/hosts.yml):
-# a ZFS replica on the target every 15 min, and an HA resource that prefers vm_node and
-# falls back to the replica. Needs three nodes for quorum, ZFS storage on both ends
-# (answer.toml), and the VMs to exist: run after 30-docker.yml, and again for a new VM.
+# Storage replication and Proxmox HA for the VMs with vm_replicate_to and the containers with
+# lxc_replicate_to (inventory/hosts.yml): a ZFS replica on the target every 15 min, and an HA
+# resource that prefers the home node and falls back to the replica. Needs three nodes for
+# quorum, ZFS storage on both ends (answer.toml), and the guests to exist: run after
+# 30-docker.yml, and again for a new replicated guest.
+#
+# While a container runs on its replica's node, playbooks that reach it through lxc_node
+# (pve_lxc, the bastion's pct exec) fail until HA moves it back, which it does on its own
+# once the home node is up.
 #
 #   ansible-playbook playbooks/32-ha.yml --check --diff
 #   ansible-playbook playbooks/32-ha.yml

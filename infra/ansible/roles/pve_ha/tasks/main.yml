@@ -1,19 +1,29 @@
 ---
-# Storage replication and HA for every VM with vm_replicate_to. Cluster-wide config, so run on
-# the primary only. Create-only plus drift correction of the managed keys; a VM removed from
-# the inventory keeps its job and resource until 99-teardown or by hand.
+# Storage replication and HA for every VM with vm_replicate_to and every container with
+# lxc_replicate_to. Cluster-wide config, so run on the primary only. Create-only plus drift
+# correction of the managed keys; a guest removed from the inventory keeps its job and resource
+# until 99-teardown or by hand.
 #
 # Written against the Proxmox VE 9 API, where HA groups became rules (/cluster/ha/rules,
 # type node-affinity). Read the --check --diff output before the first real run.
 
-- name: Pick the replicated VMs
+# sid is the HA resource id: vm:<vmid> or ct:<vmid>. Containers fail over by restarting on the
+# target - there is no live migration for them, and none is needed for a failover.
+- name: Pick the replicated guests
   ansible.builtin.set_fact:
     _ha_vms: >-
       {%- set out = [] -%}
       {%- for h in groups['vm'] | default([]) if hostvars[h].vm_replicate_to is defined -%}
       {%-   set v = hostvars[h] -%}
       {%-   set _ = out.append({'name': h, 'vmid': v.ansible_host.split('.')[-1] | int,
+                                'sid': 'vm:' ~ v.ansible_host.split('.')[-1],
                                 'node': v.vm_node, 'target': v.vm_replicate_to}) -%}
+      {%- endfor -%}
+      {%- for h in groups['lxc'] | default([]) if hostvars[h].lxc_replicate_to is defined -%}
+      {%-   set v = hostvars[h] -%}
+      {%-   set _ = out.append({'name': h, 'vmid': v.ansible_host.split('.')[-1] | int,
+                                'sid': 'ct:' ~ v.ansible_host.split('.')[-1],
+                                'node': v.lxc_node, 'target': v.lxc_replicate_to}) -%}
       {%- endfor -%}
       {{ out }}
 
@@ -22,7 +32,7 @@
     that:
       - item.target in groups['pve']
       - item.target != item.node
-    fail_msg: "{{ item.name }}: vm_replicate_to {{ item.target }} must be a pve node other than {{ item.node }}."
+    fail_msg: "{{ item.name }}: replicate_to {{ item.target }} must be a pve node other than {{ item.node }}."
     quiet: true
   loop: "{{ _ha_vms }}"
   loop_control:
@@ -113,7 +123,7 @@
       - create
       - /cluster/ha/resources
       - --sid
-      - vm:{{ item.vmid }}
+      - "{{ item.sid }}"
       - --state
       - "{{ pve_ha_state }}"
       - --max_restart
@@ -122,9 +132,7 @@
       - "{{ pve_ha_max_relocate | string }}"
       - --comment
       - "{{ item.name }} (Ansible)"
-  loop: "{{ _ha_vms | rejectattr('vmid', 'in', _ha_vmids) | list }}"
-  vars:
-    _ha_vmids: "{{ (_ha_res.stdout | from_json) | map(attribute='sid') | map('regex_replace', '^vm:', '') | map('int') | list }}"
+  loop: "{{ _ha_vms | rejectattr('sid', 'in', (_ha_res.stdout | from_json) | map(attribute='sid') | list) | list }}"
   loop_control:
     label: "{{ item.name }}"
   changed_when: true
@@ -152,7 +160,7 @@
       - --type
       - node-affinity
       - --resources
-      - vm:{{ item.vmid }}
+      - "{{ item.sid }}"
       - --nodes
       - "{{ item.node }}:{{ pve_ha_priority }},{{ item.target }}:{{ pve_ha_priority | int - 1 }}"
       - --strict

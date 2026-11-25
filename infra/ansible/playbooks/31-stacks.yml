@@ -1,6 +1,6 @@
 ---
-# Docker Compose stacks on the Docker hosts: each host's compose_stacks (group_vars/home.yml
-# for home-01) from infra/ansible/stacks/<name>/. After 30-docker.yml. Re-run after editing a
+# Docker Compose stacks on the Docker hosts: each host's compose_stacks (inventory/hosts.yml)
+# from infra/ansible/stacks/<name>/. After 30-docker.yml. Re-run after editing a
 # compose.yaml; add -e compose_pull=true to update the images.
 #
 #   ansible-playbook playbooks/31-stacks.yml --check --diff

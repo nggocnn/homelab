@@ -1,4 +1,4 @@
-# home-01: Home Assistant Container and ESPHome. Deployed by 31-stacks.yml to /opt/stacks/home;
+# docker-01: Home Assistant Container and ESPHome. Deployed by 31-stacks.yml to /opt/stacks/home;
 # the config folders sit beside this file on the VM disk (nightly backup + replica on pve-03).
 #
 # Host networking for both: Home Assistant finds ESPHome devices, Chromecasts and the like
