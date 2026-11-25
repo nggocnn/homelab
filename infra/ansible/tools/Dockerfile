@@ -10,9 +10,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-client whois git \
  && rm -rf /var/lib/apt/lists/*
 
+# passlib: the password_hash filter (guest_user) - Python 3.13 has no crypt module to fall back on.
 RUN pip install --no-cache-dir \
       ansible==13.1.0 \
       paramiko==4.0.0 \
+      passlib==1.7.4 \
       ansible-lint==25.11.0
 
 # A user with the host's uid/gid (ansible.sh passes them), so files written to the repo and
