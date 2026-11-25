@@ -18,8 +18,8 @@ apt_packages:
 pihole_extra_records:
   - { ip: "{{ pve_vip }}", name: "{{ pve_vip_name }}" }
   # Service names, so a bookmark survives the service moving to another host.
-  - { ip: "{{ hostvars['home-01'].ansible_host }}", name: "ha.{{ pve_domain }}" }       # Home Assistant :8123
-  - { ip: "{{ hostvars['home-01'].ansible_host }}", name: "esphome.{{ pve_domain }}" }  # ESPHome :6052
+  - { ip: "{{ hostvars['docker-01'].ansible_host }}", name: "ha.{{ pve_domain }}" }       # Home Assistant :8123
+  - { ip: "{{ hostvars['docker-01'].ansible_host }}", name: "esphome.{{ pve_domain }}" }  # ESPHome :6052
 
 # --- keepalived ---------------------------------------------------------------
 # 150 / 100 / 50, from position in the group, so a fourth member needs no new var.

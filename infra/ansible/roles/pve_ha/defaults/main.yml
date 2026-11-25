@@ -1,7 +1,8 @@
 ---
-# Per VM in inventory: vm_node and vm_replicate_to. A VM without vm_replicate_to is skipped.
+# Per guest in inventory: vm_node and vm_replicate_to, or lxc_node and lxc_replicate_to.
+# A guest without one is skipped.
 
-# Storage replication: ZFS send of the VM's disks to the target, incremental after the first.
+# Storage replication: ZFS send of the guest's disks to the target, incremental after the first.
 # What a failover loses is at most this much: the target boots from the last replica.
 pve_ha_replication_schedule: "*/15"
 # Bandwidth cap for the sync, in MB/s, so a first full send doesn't fill the 1 GbE link. 0 = none.
@@ -12,6 +13,6 @@ pve_ha_state: started
 pve_ha_max_restart: 1    # restarts on the same node before relocating
 pve_ha_max_relocate: 1   # relocations before giving up
 
-# Node affinity: vm_node at this priority, vm_replicate_to one lower. Not strict, so with both
-# down the VM may start on any node; with replication only the target has a fresh disk.
+# Node affinity: the home node at this priority, the replica's one lower. Not strict, so with both
+# down the guest may start on any node; with replication only the target has a fresh disk.
 pve_ha_priority: 2
