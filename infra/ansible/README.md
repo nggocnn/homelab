@@ -72,9 +72,7 @@ Losing them once (2026-11) meant regaining the nodes through the web UI's root s
 | `playbooks/14-dns-clients.yml` | Points the nodes (`pvesh`) and the containers created so far (`pct set`) at `lxc_resolvers`. Until 13 has run, creation uses the gateway; containers created later start on `dns_vip`. |
 | `playbooks/20-beszel.yml` | `beszel-01`: the Beszel hub, an agent on each node and VM (per-container stats on Docker hosts), and alerts to Telegram. Host hardware and OS only - CPU, memory, disks, network, temperatures, SMART and failed units. Systems and alerts come from Ansible, so a change made in the web UI is overwritten on the next run. |
 | `playbooks/21-uptime-kuma.yml` | `kuma-01`: Uptime Kuma, which probes the VIPs, the containers and the tunnel from outside and serves a status page. Monitors come from AutoKuma files (`autokuma_monitors` plus a ping per host) and alert to Telegram; a monitor removed there is deleted with its history. Create the admin in the web UI first. |
-| `playbooks/22-prometheus.yml` | `monitor-01`: Prometheus, Alertmanager and Grafana, with `prometheus-pve-exporter` beside them and a power-only node exporter plus a process exporter on each node, and a Pi-hole exporter on each DNS container. The cluster and its services - quorum, guests, storage, backups - and alerts to Telegram. |
-| `playbooks/23-loki.yml` | Loki beside Prometheus on `monitor-01`, and Grafana Alloy on each node shipping journald into it. |
-| `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the three above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, plus `Datastore.AllocateSpace` and `VM.Backup` on `/storage/backup` and `/vms` so it can list backups, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Polls every 30 s and rolls up every 30 min, to keep its SQLite writes off the NVMe. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
+| `playbooks/24-pulse.yml` | `pulse-01`: Pulse, a trial beside the two above. Reads the cluster through the API as `pulse@pve` (PVEAuditor, plus `Datastore.AllocateSpace` and `VM.Backup` on `/storage/backup` and `/vms` so it can list backups, token registered once), and an agent on each node adds temperatures, SMART and host metrics - root, reporting only, with a token of its own. No notifications, telemetry off. Polls every 30 s and rolls up every 30 min, to keep its SQLite writes off the NVMe. Installed from the release tarball rather than the vendor's script, so neither the server nor the agents update themselves. |
 | `playbooks/25-nas.yml` | `nas-01`: Samba for Windows on `tank/nas`, bind-mounted from the node, so the data is not in the container's backups. SMB 2.1 and up for compatibility, every session signed and SMB3 ones encrypted, one user (`nggocnn`, password from `samba-password`), the LAN only, and `wsdd2` so the share shows under Network. Needs 03. Then re-run 13 and 21 for its DNS record and monitoring. |
 | `playbooks/30-docker.yml` | The `docker` group, `docker-01` (pve-01) and `home-01` (pve-02, sized in `group_vars/home.yml`): Ubuntu 24.04 VM from the cloud image (create-only, first boot upgrades), host key trusted through the guest agent, `nggocnn` with certificate-only SSH and password sudo, then Docker Engine from Docker's repo. Then re-run 13, 20 and 21 for its DNS record and monitoring. |
 | `playbooks/31-stacks.yml` | Docker Compose stacks: each host's `compose_stacks` from `stacks/<name>/compose.yaml`, with an optional vault-encrypted `stacks/<name>/env` decrypted to `.env`, into `/opt/stacks/<name>`, then `docker compose up -d`. `home-01` runs `stacks/home`: Home Assistant Container and ESPHome on host networking, Bluetooth through ESPHome proxies on ESP32s. `-e compose_pull=true` updates the images. |
@@ -105,9 +103,6 @@ read -rp 'Telegram chat ID: ' c && printf '%s' "$c" > telegram-chat-id; unset c 
 ansible-playbook playbooks/20-beszel.yml
 (umask 077; read -rsp 'Uptime Kuma password: ' p && printf '%s' "$p" > kuma-password; unset p)   # the admin made on first visit
 ansible-playbook playbooks/21-uptime-kuma.yml
-(umask 077; read -rsp 'Grafana password: ' p && printf '%s' "$p" > grafana-password; unset p)   # gitignored
-ansible-playbook playbooks/22-prometheus.yml
-ansible-playbook playbooks/23-loki.yml
 (umask 077; read -rsp 'Pulse password: ' p && printf '%s' "$p" > pulse-password; unset p)   # gitignored
 ansible-playbook playbooks/24-pulse.yml
 (umask 077; read -rsp 'Samba password: ' p && printf '%s' "$p" > samba-password; unset p)   # gitignored
@@ -174,18 +169,18 @@ ssh root@dns-01.nggocnn.internal
 
 ### Monitoring
 
-Three tools, split so none repeats another. Each alerts to Telegram on its own.
+Two tools, split so neither repeats the other, each alerting to Telegram on its own, and Pulse on trial.
 
 | Where | Watches |
 | --- | --- |
 | Beszel, `beszel-01:8090` | The nodes and VMs themselves: CPU, memory, disks, network, temperatures, SMART, failed units, and Docker containers. |
-| Prometheus, `monitor-01:9090`, Grafana on `:3000` | The cluster and its services: quorum, node and guest state, storage, backup coverage - plus CPU package power (Intel RAPL) and per-process history from the nodes, and Pi-hole's query stats. |
 | Uptime Kuma, `kuma-01:3001` | Whether an address answers, from outside: the two VIPs, the containers, the VMs, the tunnel. |
-| Loki, on `monitor-01`, read in Grafana | The journal of each node, labelled `host`, `unit` and `level`, kept 30 days. Alloy ships it - Promtail reached end of life in March 2026. |
 | Pulse, `pulse-01:7655` | On trial: nodes, guests, storage and backups in one view from the Proxmox API, host health from its agents. Alerts nowhere. |
 
-The node exporter runs with `--collector.disable-defaults --collector.rapl`, so it reports power
-and nothing else - the rest of the host belongs to Beszel.
+Prometheus, Alertmanager, Grafana and Loki on `monitor-01` (cluster alerts, CPU power, per-process
+history, Pi-hole stats, node journals) are archived on branch `monitor-stack`: playbooks
+`22-prometheus.yml` and `23-loki.yml` and their roles. `99-teardown.yml` still removes their node
+agents and the `prometheus@pve` user, in case a node was built from that branch.
 
 ### Cluster VIP
 
