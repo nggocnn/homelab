@@ -42,6 +42,47 @@
     mode: "0644"
   loop: "{{ static_site_dirs }}"
 
+# copy only adds and overwrites. To make the web root match the source, list what the source
+# holds and delete the rest. Plain find + file instead of synchronize: no rsync in the
+# controller image, and the SSH hop through the bastion.
+- name: List the source pages
+  ansible.builtin.find:
+    paths: "{{ static_site_src }}"
+    patterns: "{{ static_site_files }}"
+    file_type: file
+  register: _site_src_pages
+  delegate_to: localhost
+  become: false
+
+- name: List the source folders
+  ansible.builtin.find:
+    paths: "{{ static_site_dirs | map('regex_replace', '^', static_site_src ~ '/') | list }}"
+    recurse: true
+    file_type: file
+  register: _site_src_dirs
+  delegate_to: localhost
+  become: false
+  when: static_site_dirs | length > 0
+
+- name: List what is served
+  ansible.builtin.find:
+    paths: "{{ static_site_root }}"
+    recurse: true
+    file_type: file
+    hidden: true
+  register: _site_served
+
+- name: Delete what the source no longer has
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _site_served.files | map(attribute='path') | reject('in', _site_keep) | list }}"
+  vars:
+    _site_keep: >-
+      {{ (_site_src_pages.files + (_site_src_dirs.files | default([])))
+         | map(attribute='path') | map('relpath', static_site_src)
+         | map('regex_replace', '^', static_site_root ~ '/') | list }}
+
 - name: Write the site config
   ansible.builtin.template:
     src: site.conf.j2

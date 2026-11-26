@@ -1,6 +1,6 @@
 ---
-# A static folder served by nginx on :80. Files come from the controller; the web root is
-# replaced on every run, so a page deleted at the source disappears here too.
+# A static folder served by nginx on :80. Files come from the controller, and each run
+# deletes served files the source no longer has, so a page removed there disappears here too.
 static_site_src: ""
 static_site_files: ["*.html"]
 static_site_dirs: []

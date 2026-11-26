@@ -12,3 +12,4 @@ autokuma_monitors:
   beszel: { type: http, name: Beszel, url: "http://{{ hostvars['beszel-01'].ansible_host }}:8090" }
   home-assistant: { type: http, name: Home Assistant, url: "http://{{ hostvars['docker-01'].ansible_host }}:8123/manifest.json" }
   esphome: { type: http, name: ESPHome, url: "http://{{ hostvars['docker-01'].ansible_host }}:6052" }
+  study: { type: http, name: Study site, url: "http://{{ hostvars['study-01'].ansible_host }}/quiz.html" }
